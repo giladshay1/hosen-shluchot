@@ -389,3 +389,6 @@ button.tag{border:0;cursor:pointer;font:inherit;font-size:13px}
 .install-btn{margin-top:4px;min-height:44px;padding:0 20px;border-radius:22px;background:#E8F3F1;color:#0B3954;font-weight:700;font-size:15px;border:1.5px solid #9CC3BD}
 .sheet ol{padding-inline-start:22px;line-height:1.9;font-size:16px}
 .sheet ol li{margin-bottom:4px}
+.br-sw{display:flex;gap:6px;margin-top:12px;background:rgba(255,255,255,.12);padding:4px;border-radius:14px}
+.br-sw button{flex:1;min-height:40px;border-radius:10px;color:#fff;font-weight:700;font-size:15px}
+.br-sw button.on{background:#fff;color:#0B3954}

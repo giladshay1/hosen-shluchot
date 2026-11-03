@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.0.3';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -139,13 +139,16 @@ const LS = {
 let G = LS.get('hosen:g2') || { session: null, demo: false, theme: 'light', server: null };
 let S = null; // per-user state (local cache of server data + things that live only on the phone)
 const saveG = () => LS.set('hosen:g2', G);
-const userKey = () => (G.demo ? 'demo' : G.session ? G.session.user.userId : null);
+const CLUSTER = 'אשכול';
+const isCluster = () => !G.demo && !!(G.session && G.session.user && G.session.user.branch === CLUSTER);
+const viewBranch = () => (BRANCHES[G.viewBranch] ? G.viewBranch : 'ים');
+const userKey = () => (G.demo ? 'demo' : G.session ? G.session.user.userId + (isCluster() ? ':' + viewBranch() : '') : null);
 const save = () => { const k = userKey(); if (k && S) LS.set('hosen:u:' + k, S); };
 const initialsOf = (name) => { const w = String(name || '').trim().split(/\s+/).filter(Boolean); return w.length > 1 ? w[0][0] + '״' + w[w.length - 1][0] : (w[0] || '?').slice(0, 2); };
 const ME = () => {
   if (G.demo) return DEMO_USER;
   const u = G.session && G.session.user; if (!u) return null;
-  return { name: u.name, first: String(u.name || '').trim().split(/\s+/)[0], branch: u.branch, initials: initialsOf(u.name), isAdmin: !!u.isAdmin };
+  return { name: u.name, first: String(u.name || '').trim().split(/\s+/)[0], branch: isCluster() ? viewBranch() : u.branch, title: u.title || '', cluster: isCluster(), initials: initialsOf(u.name), isAdmin: !!u.isAdmin };
 };
 const BR = () => {
   const me = ME(); const b = BRANCHES[me.branch];
@@ -235,6 +238,7 @@ function checkNotifications() {
 
 // ───────────── server sync (Apps Script API; offline queue lives in api.js / IndexedDB) ─────────────
 const api = new Api(API_URL);
+{ const raw = api.call.bind(api); api.call = (action, payload = {}, opts = {}) => raw(action, isCluster() && payload && !payload.branch ? { ...payload, branch: viewBranch() } : payload, opts); }
 const SYNC = { online: navigator.onLine, pending: 0, failed: 0, flushing: false, err: null, needPull: false, lastPull: null, pulling: false };
 const aiAvailable = () => live() && !!G.server && G.server.mockAi === false;   // server AI only when the server says it is real
 function syncState() {
@@ -322,7 +326,8 @@ async function pullServerEvent(se) {
   if (se.status === 'closed' && !ev.closedAt) ev.closedAt = Date.parse(se.closed_at) || Date.now();
   if (!isNew && ev.closedAt) return;
   if (se.status === 'closed' && isNew) return;
-  let r; try { r = await api.call('events.get', { event_id: se.event_id }, { queueable: false }); } catch (e) { return; }
+  const k = userKey(); let r; try { r = await api.call('events.get', { event_id: se.event_id }, { queueable: false }); } catch (e) { return; }
+  if (userKey() !== k) return;
   const steps = (r && (r.steps || (r.data && r.data.steps))) || [];
   const isTrue = (v) => v === true || String(v).toUpperCase() === 'TRUE';
   if (isNew) {
@@ -334,11 +339,12 @@ async function pullServerEvent(se) {
 }
 async function pullAll() {
   if (!live() || SYNC.pulling || !navigator.onLine) return;
-  SYNC.pulling = true;
+  SYNC.pulling = true; const k0 = userKey(); const stale = () => userKey() !== k0;
   try {
     const hasPending = (await api.pending()).some((i) => (i.attempts || 0) < 3);
     if (!hasPending) {
       const list = arrOf(await api.call('contacts.list', {}, { queueable: false }));
+      if (stale()) return;
       if (list) {
         const keepLocal = S.contacts.filter((c) => c._local);
         S.contacts = list.map(fromServerContact).concat(keepLocal.filter((c) => !list.some((x) => normPhone(x.phone).wa === normPhone(c.phone).wa)));
@@ -348,12 +354,14 @@ async function pullAll() {
       SYNC.needPull = false;
     }
     const evs = arrOf(await api.call('events.list', {}, { queueable: false }));
-    if (evs) for (const se of evs.slice(0, 40)) await pullServerEvent(se);
+    if (stale()) return;
+    if (evs) for (const se of evs.slice(0, 40)) { await pullServerEvent(se); if (stale()) return; }
     SYNC.lastPull = Date.now(); SYNC.err = null;
     save(); softRender();
   } catch (e) {
     SYNC.err = e.code || 'ERR';
-  } finally { SYNC.pulling = false; paintSync(); }
+  } finally { SYNC.pulling = false; paintSync(); if (stale()) setTimeout(pullAll, 0); }
+  if (stale()) return;
   loadFacilitators();
 }
 async function refreshServerInfo() {
@@ -860,8 +868,9 @@ V.home = () => {
   const rems = evs.flatMap((e) => remindersFor(e).filter((r) => r.at).map((r) => ({ ...r, ev: e }))).sort((a, b) => a.at - b.at).slice(0, 3);
   const weekCount = sessionsInWeek(0).filter((s) => s.status === 'תואם').length;
   return `
-<header class="hero"><div class="hero-top"><img class="hero-logo" src="${LOGOS.shieldFull}" alt=""><div style="flex:1;min-width:0"><div class="hero-k">מרכז חוסן גליל מערבי · שלום ${esc(me.first)}</div><div class="hero-n">${esc(br.name)}</div></div><button class="hero-av" data-act="settings" aria-label="הגדרות ופרופיל">${esc(me.initials)}</button></div>
+<header class="hero"><div class="hero-top"><img class="hero-logo" src="${LOGOS.shieldFull}" alt=""><div style="flex:1;min-width:0"><div class="hero-k">מרכז חוסן גליל מערבי · שלום ${esc(me.first)}${me.title ? ' · ' + esc(me.title) : ''}</div><div class="hero-n">${esc(br.name)}</div></div><button class="hero-av" data-act="settings" aria-label="הגדרות ופרופיל">${esc(me.initials)}</button></div>
 <div class="hero-sync">${syncSlot(false)}</div>
+${me.cluster ? `<div class="br-sw" role="tablist" aria-label="בחירת שלוחה">${Object.keys(BRANCHES).map((b) => `<button role="tab" aria-selected="${b === me.branch}" class="${b === me.branch ? 'on' : ''}" data-act="set-branch" data-b="${esc(b)}">${esc(b)}</button>`).join('')}</div>` : ''}
 <div class="hero-towns">${br.authorities.map((a) => `<span>${esc(a)}</span>`).join('')}</div></header>
 <main class="pad">
   ${isStandalone() ? '' : `<div style="text-align:center;margin-bottom:10px">${installBtn()}</div>`}
@@ -1678,6 +1687,10 @@ A.logout = async () => {
 A.install = async () => {
   if (INSTALL_EVT) { const ev = INSTALL_EVT; INSTALL_EVT = null; ev.prompt(); try { await ev.userChoice; } catch (_) {} render(); return; }
   installHelp();
+};
+A['set-branch'] = (el) => {
+  const b = el.dataset.b; if (!BRANCHES[b] || b === viewBranch()) return;
+  G.viewBranch = b; saveG(); S = null; loadUser(); render(); toast('עברת ל' + BRANCHES[b].name); pullAll();
 };
 A.demo = () => { G.demo = true; G.session = null; saveG(); S = null; loadUser(); location.hash = '#/home'; render(); toast('מצב הדגמה – נתוני דמה, בלי חיבור לשרת'); };
 A.sync = () => {
