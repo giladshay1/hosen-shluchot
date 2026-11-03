@@ -43,7 +43,7 @@ button{background:none;border:0;cursor:pointer}
 .login{background:#fff;color:#0B2A3C;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:28px 16px 24px}
 :root[data-theme=dark] .login{background:#fff}
 .login-top{width:190px;max-width:55%}
-.login-top img{width:100%;display:block}
+.login-top img{width:100%;height:auto;display:block}
 .shield{position:relative;width:340px;max-width:calc(100vw - 32px);aspect-ratio:337/349;margin-top:18px}
 .shield>img.frame{position:absolute;inset:0;width:100%;height:100%}
 .shield-in{position:absolute;left:27%;right:27%;top:15%;bottom:27%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
