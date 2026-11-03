@@ -385,3 +385,7 @@ button.tag{border:0;cursor:pointer;font:inherit;font-size:13px}
 .fl-big{display:block;width:100%;max-height:60vh;object-fit:contain;border-radius:12px;margin-top:10px;background:#fff;border:1px solid var(--line)}
 .upd{position:fixed;top:calc(8px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:70;background:var(--pri);color:var(--on-pri);font-weight:700;padding:10px 16px;border-radius:99px;box-shadow:0 6px 18px rgba(0,0,0,.2);min-height:44px}
 .upd[hidden]{display:none}
+
+.install-btn{margin-top:4px;min-height:44px;padding:0 20px;border-radius:22px;background:#E8F3F1;color:#0B3954;font-weight:700;font-size:15px;border:1.5px solid #9CC3BD}
+.sheet ol{padding-inline-start:22px;line-height:1.9;font-size:16px}
+.sheet ol li{margin-bottom:4px}

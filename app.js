@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -850,6 +850,7 @@ V.login = () => `
     </div>
   </form>
   <div class="login-err" id="lerr" role="alert">${esc(UI.loginMsg || '')}</div>
+  ${installBtn()}
   <button class="login-demo" data-act="demo">מצב הדגמה – בלי חיבור לשרת, נתוני דמה בלבד</button>
   <div class="login-foot">מרכז חוסן אשכול גליל מערבי · בהפעלת משאבים · גרסה ${APP_VERSION}</div>
 </div>`;
@@ -863,6 +864,7 @@ V.home = () => {
 <div class="hero-sync">${syncSlot(false)}</div>
 <div class="hero-towns">${br.authorities.map((a) => `<span>${esc(a)}</span>`).join('')}</div></header>
 <main class="pad">
+  ${isStandalone() ? '' : `<div style="text-align:center;margin-bottom:10px">${installBtn()}</div>`}
   <a class="sos" href="#/emergency">${icon('alert')}<span><b>מצב חירום</b><small>בחירת סוג אירוע ופתיחת צ'קליסט</small></span></a>
   ${evs.map((e) => { const c = totalCounts(e); const ph = PHASES.find((p) => p.id === e.phase); return `<a class="active-ev" href="#/event/${e.id}"><span class="pulse"></span><span class="ae-t"><b>אירוע פעיל: ${esc(evTitle(e))}</b><span>${e.mode === 'ongoing' ? 'יום ' + e.day + ' · ' : ''}שלב ${PH_NUM[e.phase]} ${esc(ph.name)} · ${c.done}/${c.total} בוצעו</span></span>${icon('chevL')}</a>`; }).join('')}
   <div class="grid">
@@ -1330,6 +1332,25 @@ V.notFound = () => `${appBar('לא נמצא', '', '#/home')}<main class="pad"><d
 // ───────────── sheets ─────────────
 function sheet(html) { $('#sheet-root').innerHTML = `<div class="sheet-bg" data-act="sheet-bg"><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div></div>`; const f = $('#sheet-root .sheet input:not([type=checkbox]), #sheet-root .sheet button'); if (f && f.tagName === 'INPUT') f.focus(); }
 function closeSheet() { $('#sheet-root').innerHTML = ''; UI.queue = null; }
+// ───────────── install to home screen ─────────────
+let INSTALL_EVT = null;
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const UA = navigator.userAgent || '';
+const isIOS = () => /iPhone|iPad|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isInApp = () => /WhatsApp|FBAN|FBAV|Instagram|Line\//.test(UA);
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); INSTALL_EVT = e; if (location.hash === '' || /login/.test(location.hash) || !G.session) try { render(); } catch (_) {} });
+window.addEventListener('appinstalled', () => { INSTALL_EVT = null; toast('האפליקציה נוספה למסך הבית'); try { render(); } catch (_) {} });
+const installBtn = () => isStandalone() ? '' : `<button class="install-btn" data-act="install">📲 הוספה למסך הבית</button>`;
+function installHelp() {
+  const ios = isIOS(), inApp = isInApp(), android = /Android/.test(UA);
+  let steps;
+  if (inApp) steps = `<p><b>הדף נפתח בתוך וואטסאפ.</b> צריך לפתוח אותו בדפדפן:</p><ol><li>לוחצים על ⋮ או על סמל המצפן/הדפדפן למעלה.</li><li>בוחרים "פתיחה ב-${ios ? 'Safari' : 'Chrome'}".</li><li>שם לוחצים שוב על "הוספה למסך הבית".</li></ol>`;
+  else if (ios) steps = `<ol><li>חייבים להיות ב-<b>Safari</b> (לא בכרום).</li><li>לוחצים על כפתור השיתוף <b>⬆︎</b> – ריבוע עם חץ למעלה, בשורה התחתונה (או ליד שורת הכתובת).</li><li>גוללים מטה ובוחרים <b>"הוסף למסך הבית"</b>.</li><li>לוחצים <b>"הוסף"</b> בפינה.</li></ol>`;
+  else if (android) steps = `<ol><li>בכרום: לוחצים על <b>⋮</b> (שלוש נקודות) למעלה.</li><li>בוחרים <b>"התקנת אפליקציה"</b> או <b>"הוספה למסך הבית"</b>.</li><li>מאשרים <b>"התקנה"</b>.</li></ol><p class="muted">בדפדפן סמסונג: ☰ למטה ← "הוספת דף אל" ← "מסך הבית".</p>`;
+  else steps = `<ol><li>במחשב בכרום/אדג': בשורת הכתובת, בצד, יש סמל של מסך עם חץ <b>⊕</b> – לוחצים עליו ← "התקנה".</li><li>או: ⋮ ← "העברה, שיתוף ושמירה" ← "התקנת הדף כאפליקציה".</li><li>בטלפון: פותחים את אותה כתובת ומוסיפים למסך הבית.</li></ol>`;
+  sheet(`<h3>📲 הוספה למסך הבית</h3>${steps}<div class="btn-row" style="margin-top:12px"><button class="btn btn-pri" data-act="sheet-close">הבנתי</button></div>`);
+}
+
 function settingsSheet() {
   const me = ME(), perm = 'Notification' in window ? Notification.permission : 'unsupported';
   const sv = G.server, st = syncState();
@@ -1653,6 +1674,10 @@ A.logout = async () => {
     await api.clearAll();
   }
   G.session = null; G.demo = false; saveG(); S = null; closeSheet(); UI.loginMsg = ''; Object.assign(UI, { intake: null, assess: null, msg: null, report: {}, newEv: null }); location.hash = ''; rerender();
+};
+A.install = async () => {
+  if (INSTALL_EVT) { const ev = INSTALL_EVT; INSTALL_EVT = null; ev.prompt(); try { await ev.userChoice; } catch (_) {} render(); return; }
+  installHelp();
 };
 A.demo = () => { G.demo = true; G.session = null; saveG(); S = null; loadUser(); location.hash = '#/home'; render(); toast('מצב הדגמה – נתוני דמה, בלי חיבור לשרת'); };
 A.sync = () => {
