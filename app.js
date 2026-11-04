@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.0.5';
+const APP_VERSION = '1.0.6';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -885,7 +885,7 @@ ${me.cluster ? `<div class="br-sw" role="tablist" aria-label="בחירת שלו�
     <a class="tile" href="#/contacts"><span class="tile-ic">${icon('phone')}</span><b>אנשי קשר</b><small>${S.contacts.length} · לפי תפקיד ורשות</small></a>
     <a class="tile" href="#/flyers"><span class="tile-ic">${icon('image')}</span><b>פליירים</b><small>לפי מצב, קהל ושפה</small></a>
     <a class="tile" href="#/events"><span class="tile-ic">${icon('book')}</span><b>יומן אירועים</b><small>${S.events.length} אירועים · ${S.assessments.length} הערכות</small></a>
-    <a class="tile wide" href="#/alerts"><span class="tile-ic">${icon('bell')}</span><span style="flex:1"><b>התראות חדשות וחירום</b><br><small>בקרוב · כרגע כותרות דמה</small></span>${icon('chevL')}</a>
+    <a class="tile wide" href="#/alerts"><span class="tile-ic">${icon('bell')}</span><span style="flex:1"><b>מבזקי חירום</b><br><small>ynet · וואלה · i24NEWS · ערוץ 14 – לפי רשויות השלוחה</small></span>${icon('chevL')}</a>
   </div>
   ${rems.length ? `<div class="sec"><span>${icon('bell', 'ic-s')} תזכורות קרובות</span></div>${rems.map((r) => remRow(r, r.ev)).join('')}` : ''}
   ${G.demo ? `<div class="sec"><span class="demo-badge">${icon('info', 'ic-xs')} מצב הדגמה – נתוני דמה, נשמרים רק בטלפון הזה ולא נשלחים לשרת</span></div>` : G.server && G.server.dryRun ? `<div class="sec"><span class="demo-badge">${icon('info', 'ic-xs')} השרת במצב בדיקה: קליטת קבוצות לא נכתבת לטבלת המעקב</span></div>` : ''}
@@ -1352,32 +1352,63 @@ function openFlyer(id) {
   <div class="btn-row" style="margin-top:14px"><button class="btn btn-wa" data-act="fl-share" data-id="${f.id}" ${f.internalOnly ? 'disabled' : ''}>${icon('share', 'ic-s')} שתף</button><button class="btn btn-out" data-act="sheet-close">סגור</button></div>`);
 }
 
-// ---------- news & emergency alerts (placeholder module; demo feed) ----------
-const ALERT_KW = [['אזעקה', 'missiles'], ['נפילה', 'direct_hit'], ['פיגוע', 'terror'], ['שריפה', 'fire_hazmat'], ['רעידת אדמה', 'earthquake'], ['אר"ן', 'mci']];
-function alertFeed() {
+// ---------- news & emergency alerts: real feed from server (news.list) – ynet, וואלה, i24NEWS, ערוץ 14 ----------
+const ALERT_KW = [['אזעק', 'missiles', 'אזעקה'], ['צבע אדום', 'missiles', 'צבע אדום'], ['רקט', 'missiles', 'רקטות'], ['טיל', 'missiles', 'טילים'], ['כטב', 'missiles', 'כטב"ם'], ['נפיל', 'direct_hit', 'נפילה'], ['פגיעה ישירה', 'direct_hit', 'פגיעה ישירה'], ['פיגוע', 'terror', 'פיגוע'], ['מחבל', 'terror', 'מחבל'], ['חדיר', 'terror', 'חדירה'], ['דקיר', 'terror', 'דקירה'], ['שריפ', 'fire_hazmat', 'שריפה'], ['שרפ', 'fire_hazmat', 'שריפה'], ['חומ"ס', 'fire_hazmat', 'חומ"ס'], ['חומרים מסוכנים', 'fire_hazmat', 'חומ"ס'], ['רעידת אדמה', 'earthquake', 'רעידת אדמה'], ['אר"ן', 'mci', 'אר"ן'], ['רב נפגעים', 'mci', 'רב נפגעים'], ['רבת נפגעים', 'mci', 'רב נפגעים']];
+const NEWS = { items: LS.get('hosen:news') || [], status: null, at: LS.get('hosen:news-at') || 0, loading: false, err: null };
+function demoFeed() {
   const a = BR().authorities, now = Date.now(), m = 60000;
-  const items = [
-    { src: 'פיקוד העורף', t: now - 4 * m, title: `אזעקה: ירי רקטות וטילים – ${a[0]}`, auths: [a[0]] },
-    { src: 'אתר חדשות', t: now - 11 * m, title: `דיווח על נפילה בשטח פתוח סמוך ל${a[1]}; אין דיווח על נפגעים`, auths: [a[1]] },
-    { src: 'אתר חדשות', t: now - 26 * m, title: `שריפה בחורש סמוך ל${a[2] || a[0]}; צוותי כיבוי בשטח`, auths: [a[2] || a[0]] },
-    { src: 'פיקוד העורף', t: now - 48 * m, title: 'אזעקה: ירי רקטות וטילים – קריית שמונה', auths: [] },
-    { src: 'אתר חדשות', t: now - 70 * m, title: 'פיגוע דקירה בחיפה; הפצוע פונה לבית החולים', auths: [] },
-    { src: 'אתר חדשות', t: now - 95 * m, title: `הוכרז אר"ן בעקבות תאונה רבת נפגעים בכביש סמוך ל${a[0]}`, auths: [a[0]] },
-    { src: 'אתר חדשות', t: now - 130 * m, title: 'רעידת אדמה קלה הורגשה ברחבי הצפון', auths: a.slice(), regional: true },
-    { src: 'אתר חדשות', t: now - 180 * m, title: `ראש הרשות ב${a[0]} חנך מתנ"ס חדש`, auths: [a[0]] },
-  ];
-  return items.map((x, i) => { const kw = ALERT_KW.find(([k]) => x.title.includes(k)); return { ...x, id: 'al' + i, kw: kw ? kw[0] : null, typeId: kw ? kw[1] : null, match: !!kw && x.auths.length > 0 }; });
+  return [
+    { src: 'פיקוד העורף', t: now - 4 * m, title: `אזעקה: ירי רקטות וטילים – ${a[0]}` },
+    { src: 'אתר חדשות', t: now - 11 * m, title: `דיווח על נפילה בשטח פתוח סמוך ל${a[1]}; אין דיווח על נפגעים` },
+    { src: 'אתר חדשות', t: now - 26 * m, title: `שריפה בחורש סמוך ל${a[2] || a[0]}; צוותי כיבוי בשטח` },
+    { src: 'פיקוד העורף', t: now - 48 * m, title: 'אזעקה: ירי רקטות וטילים – קריית שמונה' },
+    { src: 'אתר חדשות', t: now - 130 * m, title: 'רעידת אדמה קלה הורגשה ברחבי הצפון', regional: true },
+  ].map((x) => ({ ...x, demo: true }));
 }
+/** finds which of the branch's authorities a headline mentions (authority names, aliases, settlements) */
+const newsRe = (w) => new RegExp('(^|\\s)[ובלמהשכ]{0,3}' + escRe(nrm(w)) + '(?=[\\s,.:;!?)]|$)');
+function newsAuths(text) {
+  const t = ' ' + nrm(text) + ' ', br = BR(), hit = new Set(), placeRe = newsRe;
+  br.authorities.forEach((a) => { if (authNames(a).some((w) => placeRe(w).test(t))) hit.add(a); });
+  SETT_LIST.forEach(({ s: st, a }) => { if (br.authorities.includes(a) && placeRe(st).test(t)) hit.add(a); });
+  return [...hit];
+}
+const REGIONAL_RE = /גליל מערבי|גליל המערבי|קו העימות|גבול הצפון|בצפון|ברחבי הצפון|הצפון כולו/;
+function alertFeed() {
+  const raw = G.demo || !live() ? demoFeed() : NEWS.items;
+  return raw.map((x, i) => {
+    const text = x.title + ' ' + (x.desc || '');
+    const kw = ALERT_KW.find(([k]) => text.includes(k));
+    const auths = newsAuths(text), regional = !!x.regional || (!auths.length && REGIONAL_RE.test(text));
+    return { ...x, id: 'al' + i, kw: kw ? kw[2] : (x.kw || null), typeId: kw ? kw[1] : null, auths: regional && !auths.length ? BR().authorities.slice() : auths, regional, match: auths.length > 0 || regional };
+  });
+}
+async function loadNews(refresh) {
+  if (!live() || NEWS.loading) return;
+  NEWS.loading = true; NEWS.err = null; if (location.hash === '#/alerts') rerender();
+  try {
+    const r = await api.call('news.list', refresh ? { refresh: true } : {}, { queueable: false });
+    if (r && Array.isArray(r.items)) { NEWS.items = r.items; NEWS.status = r.status || null; NEWS.at = r.fetchedAt || Date.now(); LS.set('hosen:news', r.items); LS.set('hosen:news-at', NEWS.at); }
+  } catch (e) { NEWS.err = (e && e.message) || 'שגיאה'; }
+  NEWS.loading = false; if (location.hash === '#/alerts') rerender();
+}
+let NEWS_TIMER = null;
+function newsAuto() { if (NEWS_TIMER) return; NEWS_TIMER = setInterval(() => { if (location.hash === '#/alerts' && document.visibilityState === 'visible') loadNews(false); }, 3 * 60000); }
 V.alerts = () => {
+  const demo = G.demo || !live();
+  if (!demo) { newsAuto(); if (!NEWS.loading && Date.now() - NEWS.at > 3 * 60000) setTimeout(() => loadNews(false), 0); }
   const all = alertFeed(), show = UI.alAll ? all : all.filter((x) => x.match);
-  return `${appBar('התראות חדשות וחירום', BR().name + ' · ' + BR().authorities.join(', '), '#/home')}
+  const st = NEWS.status ? Object.values(NEWS.status) : [];
+  const srcLine = st.length ? st.map((x) => `<span class="tag ${x.ok ? 'ok' : ''}">${esc(x.name)}${x.ok ? '' : ' ✕'}</span>`).join('') : ['ynet', 'וואלה', 'i24NEWS', 'ערוץ 14'].map((n) => `<span class="tag">${n}</span>`).join('');
+  return `${appBar('מבזקי חירום', BR().name + ' · ' + BR().authorities.join(', '), '#/home')}
 <main class="pad">
-  <div class="banner-demo">${icon('info', 'ic-s')}<span><b>הדגמה – החיבור למקורות ייבנה בשלב הבא.</b> הכותרות כאן הן דמה. בגרסה המלאה: פיקוד העורף ואתרי חדשות, מסוננים לפי רשויות השלוחה ומילות מפתח.</span></div>
-  <div class="lbl">מילות מפתח</div>
-  <div class="chips">${ALERT_KW.map(([k]) => `<span class="chip s">${esc(k)}</span>`).join('')}</div>
-  <div class="sec"><span>${show.length} כותרות${UI.alAll ? '' : ' רלוונטיות'}</span><button class="lnk" data-act="al-all">${UI.alAll ? 'רק רלוונטיות' : 'הצג הכול (' + all.length + ')'}</button></div>
-  ${show.map((x) => `<article class="alert-it ${x.match ? '' : 'out'}"><div class="meta"><span class="tag">${esc(x.src)} · דמה</span><span>${esc(whenLabel(x.t))}</span>${x.kw ? `<span class="tag">${esc(x.kw)}</span>` : ''}${x.auths.length ? `<span class="tag ok">${esc(x.regional ? 'כל השלוחה' : x.auths.join(', '))}</span>` : '<span class="tag">מחוץ לשלוחה</span>'}</div><b>${esc(x.title)}</b>
-  ${x.match ? `<button class="btn btn-sec btn-s" data-act="al-open" data-id="${x.id}">${icon('alert', 'ic-s')} פתח אירוע מזה</button>` : `<span class="muted small">${x.kw ? 'לא ברשויות השלוחה' : 'אין מילת מפתח'}</span>`}</article>`).join('')}
+  ${demo ? `<div class="banner-demo">${icon('info', 'ic-s')}<span><b>מצב הדגמה – כותרות דמה.</b> אחרי כניסה עם שם משתמש וקוד מוצגים מבזקים אמיתיים.</span></div>` : `<p class="small muted">רק מבזקים שקשורים לחירום, בלי פוליטיקה. מתעדכן כל 3 דקות. ${NEWS.at ? 'עודכן ' + esc(whenLabel(NEWS.at)) : ''}</p>`}
+  <div class="chips">${srcLine}</div>
+  ${NEWS.err && !demo ? `<div class="banner-demo">${icon('info', 'ic-s')}<span>לא הצלחתי לרענן (${esc(NEWS.err)}). מוצגות הכותרות האחרונות שנשמרו.</span></div>` : ''}
+  <div class="sec"><span>${NEWS.loading && !demo ? 'מרענן…' : show.length + ' כותרות' + (UI.alAll ? '' : ' ברשויות השלוחה')}</span><span>${demo ? '' : `<button class="lnk" data-act="al-refresh">רענן</button> · `}<button class="lnk" data-act="al-all">${UI.alAll ? 'רק השלוחה' : 'כל החירום (' + all.length + ')'}</button></span></div>
+  ${show.length ? '' : `<div class="empty">${UI.alAll ? 'אין כרגע מבזקי חירום.' : 'אין כרגע מבזקי חירום ברשויות השלוחה.'}</div>`}
+  ${show.map((x) => `<article class="alert-it ${x.match ? '' : 'out'}"><div class="meta"><span class="tag">${esc(x.src)}${x.demo ? ' · דמה' : ''}</span><span>${x.t ? esc(whenLabel(x.t)) : ''}</span>${x.kw ? `<span class="tag">${esc(x.kw)}</span>` : ''}${x.match ? `<span class="tag ok">${esc(x.regional ? 'כל השלוחה' : x.auths.join(', '))}</span>` : '<span class="tag">מחוץ לשלוחה</span>'}</div><b>${esc(x.title)}</b>
+  <div class="btn-row" style="margin-top:8px">${x.match ? `<button class="btn btn-sec btn-s" data-act="al-open" data-id="${x.id}">${icon('alert', 'ic-s')} פתח אירוע מזה</button>` : ''}${x.link ? `<a class="btn btn-out btn-s" href="${esc(x.link)}" target="_blank" rel="noopener">לכתבה</a>` : ''}</div></article>`).join('')}
 </main>${tabbar('')}`;
 };
 V.notFound = () => `${appBar('לא נמצא', '', '#/home')}<main class="pad"><div class="empty">המסך לא נמצא. <a class="lnk" href="#/home">לבית</a></div></main>`;
@@ -1721,7 +1752,8 @@ A['g15-all'] = () => { const R = UI.intake.res; const v = (R.g15AllV || '').trim
 A['fac-pick'] = (el) => { const f = FACS[+el.dataset.i]; const R = UI.intake.res; R.F.facilitator = f.n; R.flag.facilitator = 'ok'; delete R.F._facOrig; R.F._facNew = false; R.F.facResidence = f.h || ''; R.flag.facResidence = f.h ? 'list' : 'missing'; rerender(); };
 A['q6-copy'] = (el) => { const ev = getEv(el.dataset.ev); const q = Q6.find((x) => x.id === el.dataset.q); const v = String((ev.q6Prev || {})[q.id] || '').trim(); if (!v) return; ev.q6 = ev.q6 || {}; ev.q6[q.id] = v; addLog(ev, `בירור – ${q.q} ${v} (הועתק מאתמול)`, 'note'); save(); rerender(); };
 A['al-all'] = () => { UI.alAll = !UI.alAll; rerender(); };
-A['al-open'] = (el) => { const x = alertFeed().find((a) => a.id === el.dataset.id); if (!x) return; UI.newEv = { typeId: x.typeId, mode: null, auths: x.regional ? [BR().authorities[0]] : x.auths.slice(), time: toLocalInput(x.t), fromAlert: x.title }; location.hash = '#/emergency'; };
+A['al-refresh'] = () => loadNews(true);
+A['al-open'] = (el) => { const x = alertFeed().find((a) => a.id === el.dataset.id); if (!x) return; UI.newEv = { typeId: x.typeId, mode: null, auths: x.regional ? [BR().authorities[0]] : x.auths.slice(), time: toLocalInput(x.t || Date.now()), fromAlert: x.title }; location.hash = '#/emergency'; };
 A.theme = () => { G.theme = G.theme === 'dark' ? 'light' : 'dark'; saveG(); applyTheme(); settingsSheet(); };
 A.notif = async () => {
   if (!('Notification' in window)) { toast('התראות לא נתמכות בדפדפן הזה. התזכורות מופיעות באפליקציה'); return; }
