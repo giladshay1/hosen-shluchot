@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.0.9';
+const APP_VERSION = '1.1.0';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -49,6 +49,7 @@ async function copyText(text) {
 
 // ───────────── icons (Lucide-style, inline) ─────────────
 const IC = {
+  grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
   alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
   back: '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
   chevL: '<path d="m15 18-6-6 6-6"/>', chevR: '<path d="m9 18 6-6-6-6"/>', chevD: '<path d="m6 9 6 6 6-6"/>',
@@ -832,7 +833,7 @@ const appBar = (title, sub, backHref, actions = '') => `<header class="ab">${act
 function statusBar(ev) {
   return `<div class="sbar" role="status"><span class="live-dot"></span><span class="sb-live">אירוע פעיל</span><span>${esc(evTitle(ev))}</span><span class="sb-sep">|</span><span class="sb-k">${icon('clock', 'ic-xs')}<span data-elapsed="${ev.startedAt}">${elapsed(ev.startedAt)}</span></span><span class="sb-sep">|</span><span class="sb-k">הערכת מצב הבאה ${esc(whenLabel(nextAssessment()).replace('היום ', ''))}</span></div>`;
 }
-const tabbar = (on) => `<nav class="tabbar" aria-label="ניווט ראשי">${[['home', '#/home', 'בית'], ['book', '#/events', 'יומן אירועים'], ['users', '#/contacts', 'אנשי קשר'], ['image', '#/flyers', 'פליירים']].map(([ic, h, l]) => `<a href="${h}" class="${on === h ? 'on' : ''}">${icon(ic)}<span>${l}</span></a>`).join('')}</nav>`;
+const tabbar = (on) => `<nav class="tabbar" aria-label="ניווט ראשי">${[['home', '#/home', 'בית'], ['book', '#/events', 'יומן אירועים'], ['users', '#/contacts', 'אנשי קשר'], ['image', '#/flyers', 'פליירים'], ['grid', '#/maanim', 'מאגר מענים']].map(([ic, h, l]) => `<a href="${h}" class="${on === h ? 'on' : ''}">${icon(ic)}<span>${l}</span></a>`).join('')}</nav>`;
 const srcLine = (codes, max = 2) => { if (!codes) return ''; const T = srcTitle(codes); return `<div class="src">${icon('file')} מקור: ${esc(T.slice(0, max).join(' · '))}${T.length > max ? ' ועוד ' + (T.length - max) : ''}</div>`; };
 function flyerThumb(f, cls = '') {
   if (f.file) return `<div class="fl-img has-img ${cls}" aria-hidden="true"><img src="${esc(f.file)}" alt="" loading="lazy" decoding="async"></div>`;
@@ -1487,6 +1488,40 @@ V.alerts = () => {
 };
 V.notFound = () => `${appBar('לא נמצא', '', '#/home')}<main class="pad"><div class="empty">המסך לא נמצא. <a class="lnk" href="#/home">לבית</a></div></main>`;
 
+// ---------- מאגר המענים (embedded site, persistent iframe outside #app so it doesn't reload on every render) ----------
+const MAANIM_BASE = 'https://explain-awesome-pages.lovable.app';
+const MAANIM_CATS = [['', 'הכול'], ['children-3-6', 'גיל רך'], ['elementary', 'יסודי'], ['youth', 'נוער'], ['women', 'נשים'], ['men', 'גברים'], ['parents-families', 'הורים ומשפחות'], ['seniors', 'גיל שלישי'], ['educators', 'צוותים'], ['officials', 'רשותי'], ['facilitators', 'טבלת המנחים']];
+const maanimPath = (k) => (k === 'facilitators' ? '/facilitators-table' : k ? '/audience/' + k : '/');
+V.maanim = (cat) => {
+  if (cat !== undefined && cat !== UI.mnCat) { UI.mnCat = cat; UI.mnGo = true; }
+  const cur = UI.mnCat || '';
+  return `${appBar('מאגר המענים', 'מרכז החוסן גליל מערבי · לשימוש פנימי', '#/home', `<a class="ab-act" href="${MAANIM_BASE + maanimPath(cur)}" target="_blank" rel="noopener" aria-label="פתיחה בדפדפן">${icon('share')}</a>`)}
+<div class="mn-chips" id="mn-chips">${MAANIM_CATS.map(([k, l]) => `<a class="chip ${k === cur ? 'on' : ''}" href="#/maanim/${k}">${esc(l)}</a>`).join('')}</div>
+${navigator.onLine === false ? `<div class="banner-demo" style="margin:8px 16px">${icon('info', 'ic-s')}<span>אין חיבור לאינטרנט – מאגר המענים נטען רק עם רשת.</span></div>` : ''}
+<div id="mn-slot" class="mn-slot"></div>
+${tabbar('#/maanim')}`;
+};
+function syncMaanim(show) {
+  let host = document.getElementById('mn-host');
+  if (!show) { if (host) host.hidden = true; return; }
+  if (!host) {
+    host = document.createElement('div'); host.id = 'mn-host'; host.className = 'mn-host';
+    host.innerHTML = `<div class="mn-load" id="mn-load">טוען את מאגר המענים…</div><iframe id="mn-frame" title="מאגר המענים" referrerpolicy="no-referrer" loading="eager"></iframe>`;
+    document.body.appendChild(host);
+    const fr = host.querySelector('iframe'); fr.addEventListener('load', () => { const l = document.getElementById('mn-load'); if (l) l.hidden = true; });
+    UI.mnGo = true; window.addEventListener('resize', () => { if (!host.hidden) placeMaanim(); });
+  }
+  host.hidden = false;
+  const fr = host.querySelector('iframe');
+  if (UI.mnGo || !fr.src) { UI.mnGo = false; const l = document.getElementById('mn-load'); if (l) l.hidden = false; fr.src = MAANIM_BASE + maanimPath(UI.mnCat || ''); }
+  placeMaanim();
+}
+function placeMaanim() {
+  const host = document.getElementById('mn-host'), slot = document.getElementById('mn-slot'), tb = document.querySelector('.tabbar');
+  if (!host || !slot) return;
+  const top = slot.getBoundingClientRect().top, bottom = tb ? tb.getBoundingClientRect().height : 0;
+  host.style.top = Math.max(0, top) + 'px'; host.style.bottom = bottom + 'px';
+}
 // ───────────── sheets ─────────────
 function sheet(html) { $('#sheet-root').innerHTML = `<div class="sheet-bg" data-act="sheet-bg"><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div></div>`; const f = $('#sheet-root .sheet input:not([type=checkbox]), #sheet-root .sheet button'); if (f && f.tagName === 'INPUT') f.focus(); }
 function closeSheet() { $('#sheet-root').innerHTML = ''; UI.queue = null; }
@@ -1563,10 +1598,12 @@ function render() {
     case 'flyers': html = V.flyers(); break;
     case 'alerts': html = V.alerts(); break;
     case 'maase': html = V.maase(q); break;
+    case 'maanim': html = V.maanim(b); break;
     default: html = V.notFound();
   }
   const y = window.scrollY;
   app.innerHTML = html;
+  try { syncMaanim(a === 'maanim'); } catch (_) {}
   if (routeKey !== lastRoute) { window.scrollTo(0, 0); lastRoute = routeKey; if (a !== 'contacts') UI.ctAddDone = false; } else window.scrollTo(0, y);
   const t = $('.ab-title') || $('.hero-n'); document.title = (t ? t.textContent + ' · ' : '') + 'חוסן שלוחות';
 }
