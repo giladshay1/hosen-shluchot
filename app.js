@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.0.7';
+const APP_VERSION = '1.0.8';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -1156,9 +1156,36 @@ V.intake = () => {
   <div class="btn-row" style="margin-top:8px">${claudeBtn('in')}${aiAvailable() ? `<button class="btn btn-sec" data-act="in-ai" ${I.aiBusy ? 'disabled' : ''}>${icon('bulb', 'ic-s')} ${I.aiBusy ? 'מנתח…' : 'ניתוח AI בשרת'}</button>` : ''}</div>${privacyLine}
   ${I.claude ? claudePanel('in', I.claude) : ''}
   ${body}
+  ${tabPanel()}
 </main>
 ${I.res && !I.written ? `<div class="bottom"><button class="btn btn-pri btn-xl" data-act="in-write" ${I.res.sessions.length && !I.busy ? '' : 'disabled'}>${icon('table', 'ic-s')} ${I.busy ? 'שולח לשרת…' : 'כתוב ' + I.res.sessions.length + ' שורות לטבלת המעקב'}</button>${G.server && G.server.dryRun && live() ? '<p class="hint" style="margin:8px 0 0">השרת במצב בדיקה – יוצג מה היה נכתב, בלי לכתוב לטבלה.</p>' : ''}</div>` : ''}`;
 };
+// ---------- my tab in the tracking sheet (sessions.recent) ----------
+const TAB = { key: null, data: null, loading: false, err: null, at: 0 };
+async function loadTab(force) {
+  if (!live() || TAB.loading) return;
+  const key = userKey(); if (!force && TAB.key === key && Date.now() - TAB.at < 120000) return;
+  TAB.loading = true; TAB.err = null; TAB.key = key;
+  try { const r = await api.call('sessions.recent', { limit: 15 }, { queueable: false }); if (r && Array.isArray(r.rows)) { TAB.data = r; TAB.at = Date.now(); } }
+  catch (e) { TAB.err = (e && e.message) || 'שגיאה'; }
+  TAB.loading = false; if (location.hash.startsWith('#/intake')) rerender();
+}
+function tabPanel() {
+  const br = BR();
+  if (!live()) return `<h2 class="h2" style="margin-top:22px">הלשונית שלי בטבלת המעקב · ${esc(br.tab)}</h2><p class="muted small">במצב הדגמה לא מוצגות שורות מהטבלה. אחרי כניסה יופיעו כאן המפגשים האחרונים שנרשמו בלשונית "${esc(br.tab)}".</p>`;
+  if (TAB.key !== userKey() || Date.now() - TAB.at > 120000) setTimeout(() => loadTab(false), 0);
+  const d = TAB.key === userKey() ? TAB.data : null;
+  const rows = d ? d.rows : [];
+  const card = (r) => `<article class="tab-row"><div class="tr-top"><b>${esc(r.date || '—')}</b>${r.hours ? `<span class="muted">${esc(r.hours)}</span>` : ''}${r.status ? `<span class="tag ${/בוצע/.test(r.status) ? 'ok' : /בוטל/.test(r.status) ? 'bad' : ''}">${esc(r.status)}</span>` : ''}<span class="muted small tr-n">שורה ${r.row}</span></div>
+  <div class="tr-mid">${esc(r.activityName || r.activityType || '')}${r.sessionNumber ? ` · מפגש ${esc(r.sessionNumber)}${r.expectedSessions ? '/' + esc(r.expectedSessions) : ''}` : ''}</div>
+  <div class="muted small">${[r.authority, r.locality && r.locality !== r.authority ? r.locality : '', r.location, r.facilitator].filter(Boolean).map(esc).join(' · ')}</div></article>`;
+  return `<h2 class="h2" style="margin-top:22px">הלשונית שלי בטבלת המעקב · ${esc(d ? d.tab : br.tab)}</h2>
+  <div class="sec"><span>${TAB.loading ? 'טוען…' : d ? `${rows.length} השורות האחרונות${d.total ? ' מתוך ' + d.total : ''}` : ''}</span><button class="lnk" data-act="tab-refresh">רענן</button></div>
+  ${TAB.err ? `<div class="banner-demo">${icon('info', 'ic-s')}<span>לא הצלחתי לטעון את הלשונית (${esc(TAB.err)}).</span></div>` : ''}
+  ${d && !rows.length ? '<div class="empty">אין עדיין שורות בלשונית.</div>' : ''}
+  ${rows.slice().reverse().map(card).join('')}
+  ${d && d.url ? `<a class="btn btn-out" style="margin-top:10px;width:100%" href="${esc(d.url)}" target="_blank" rel="noopener">${icon('table', 'ic-s')} פתח את הלשונית בגוגל שיטס</a><p class="muted small" style="margin-top:4px">נפתח רק למי שיש לו הרשאה לטבלה.</p>` : ''}`;
+}
 function showFacSugg(q) {
   const ul = $('#fac-sugg'); if (!ul) return;
   const list = facSuggestions(q);
@@ -1613,7 +1640,7 @@ A['in-write'] = async () => {
   I.requestId = I.requestId || newId();   // same id on retry → the server never writes twice
   try {
     const r = await api.call('sessions.add', { rows: sessionRows(R) }, { requestId: I.requestId, queueable: true });
-    I.result = r; I.written = true; if (r.queued && r.reason === 'network') { SYNC.err = 'NETWORK'; paintSync(); }
+    I.result = r; I.written = true; setTimeout(() => loadTab(true), 1500); if (r.queued && r.reason === 'network') { SYNC.err = 'NETWORK'; paintSync(); }
     if (!r.duplicate || !S.sessions.some((x) => x.req === I.requestId)) addLocalSessions(R, { req: I.requestId, queued: !!r.queued, dry: !!r.dryRun });
     save();
     toast(r.queued ? 'אין חיבור – נשמר בתור ויישלח אוטומטית' : r.dryRun ? 'מצב בדיקה – לא נכתב לטבלה' : n + ' שורות נכתבו לטבלת המעקב');
@@ -1753,6 +1780,7 @@ A['fac-pick'] = (el) => { const f = FACS[+el.dataset.i]; const R = UI.intake.res
 A['q6-copy'] = (el) => { const ev = getEv(el.dataset.ev); const q = Q6.find((x) => x.id === el.dataset.q); const v = String((ev.q6Prev || {})[q.id] || '').trim(); if (!v) return; ev.q6 = ev.q6 || {}; ev.q6[q.id] = v; addLog(ev, `בירור – ${q.q} ${v} (הועתק מאתמול)`, 'note'); save(); rerender(); };
 A['al-all'] = () => { UI.alAll = !UI.alAll; rerender(); };
 A['al-refresh'] = () => loadNews(true);
+A['tab-refresh'] = () => { loadTab(true); rerender(); };
 A['al-open'] = (el) => { const x = alertFeed().find((a) => a.id === el.dataset.id); if (!x) return; UI.newEv = { typeId: x.typeId, mode: null, auths: x.regional ? [BR().authorities[0]] : x.auths.slice(), time: toLocalInput(x.t || Date.now()), fromAlert: x.title }; location.hash = '#/emergency'; };
 A.theme = () => { G.theme = G.theme === 'dark' ? 'light' : 'dark'; saveG(); applyTheme(); settingsSheet(); };
 A.notif = async () => {

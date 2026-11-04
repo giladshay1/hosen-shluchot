@@ -420,3 +420,10 @@ button.ab-act{background:none;border:0;cursor:pointer;font:inherit}
 .ab-act.ab-del svg{stroke:#fff}
 .sheet .del-q{color:#b42318;display:flex;align-items:center;gap:8px}
 .sheet .del-q svg{stroke:#b42318}
+
+/* v1.0.8: my tab rows */
+.tab-row{background:var(--card,#fff);border:1px solid var(--line,#dde5e5);border-radius:14px;padding:10px 12px;margin-top:8px}
+.tab-row .tr-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tab-row .tr-n{margin-inline-start:auto}
+.tab-row .tr-mid{margin:4px 0 2px;font-weight:600}
+.tag.bad{background:#fde8e7;color:#b42318}
