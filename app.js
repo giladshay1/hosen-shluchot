@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.0.4';
+const APP_VERSION = '1.0.5';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -315,6 +315,7 @@ async function loadFacilitators() {
   try { const r = arrOf(await api.call('getFacilitators', {}, { queueable: false })); if (r && r.length) { setFacilitators(r); LS.set('hosen:fac', r); } } catch (e) { /* keep cached / bundled list */ }
 }
 async function pullServerEvent(se) {
+  if (se.status === 'deleted' || (S.deletedEvents || []).includes(se.event_id)) { if (getEv(se.event_id)) S.events = S.events.filter((e) => e.id !== se.event_id); return; }
   let ev = getEv(se.event_id);
   const isNew = !ev;
   if (isNew) {
@@ -354,7 +355,7 @@ async function pullAll() {
       }
       SYNC.needPull = false;
     }
-    const evs = arrOf(await api.call('events.list', {}, { queueable: false }));
+    const evs = arrOf(await api.call('events.list', { includeDeleted: true }, { queueable: false }));
     if (stale()) return;
     if (evs) for (const se of evs.slice(0, 40)) { await pullServerEvent(se); if (stale()) return; }
     SYNC.lastPull = Date.now(); SYNC.err = null;
@@ -827,7 +828,7 @@ const privacyLine = '<p class="muted small" style="margin-top:4px">לפני של
 
 // ───────────── views: shared parts ─────────────
 const back = (href) => `<a class="ab-back" href="${href}" aria-label="חזרה">${icon('back')}</a>`;
-const appBar = (title, sub, backHref, actions = '') => `<header class="ab">${backHref ? back(backHref) : ''}<div class="ab-t"><div class="ab-title">${esc(title)}</div>${sub ? `<div class="ab-sub">${esc(sub)}</div>` : ''}</div>${syncSlot(true)}${actions}</header>`;
+const appBar = (title, sub, backHref, actions = '') => `<header class="ab">${actions ? '' : `<img class="ab-mash" src="${LOGOS.maashavim}" alt="משאבים">`}${backHref ? back(backHref) : ''}<div class="ab-t"><div class="ab-title">${esc(title)}</div>${sub ? `<div class="ab-sub">${esc(sub)}</div>` : ''}</div>${syncSlot(true)}${actions}</header>`;
 function statusBar(ev) {
   return `<div class="sbar" role="status"><span class="live-dot"></span><span class="sb-live">אירוע פעיל</span><span>${esc(evTitle(ev))}</span><span class="sb-sep">|</span><span class="sb-k">${icon('clock', 'ic-xs')}<span data-elapsed="${ev.startedAt}">${elapsed(ev.startedAt)}</span></span><span class="sb-sep">|</span><span class="sb-k">הערכת מצב הבאה ${esc(whenLabel(nextAssessment()).replace('היום ', ''))}</span></div>`;
 }
@@ -869,7 +870,7 @@ V.home = () => {
   const rems = evs.flatMap((e) => remindersFor(e).filter((r) => r.at).map((r) => ({ ...r, ev: e }))).sort((a, b) => a.at - b.at).slice(0, 3);
   const weekCount = sessionsInWeek(0).filter((s) => s.status === 'תואם').length;
   return `
-<header class="hero"><div class="hero-top"><img class="hero-logo" src="${LOGOS.shieldFull}" alt=""><div style="flex:1;min-width:0"><div class="hero-k">מרכז חוסן גליל מערבי · שלום ${esc(me.first)}${me.title ? ' · ' + esc(me.title) : ''}</div><div class="hero-n">${esc(br.name)}</div></div><button class="hero-av" data-act="settings" aria-label="הגדרות ופרופיל">${esc(me.initials)}</button></div>
+<header class="hero"><div class="hero-top"><img class="hero-logo" src="${LOGOS.shieldFull}" alt=""><div style="flex:1;min-width:0"><div class="hero-k">מרכז חוסן גליל מערבי · שלום ${esc(me.first)}${me.title ? ' · ' + esc(me.title) : ''}</div><div class="hero-n">${esc(br.name)}</div></div><span class="hero-mash"><img src="${LOGOS.maashavim}" alt="משאבים"></span><button class="hero-av" data-act="settings" aria-label="הגדרות ופרופיל">${esc(me.initials)}</button></div>
 <div class="hero-sync">${syncSlot(false)}</div>
 ${me.cluster ? `<div class="br-sw" role="tablist" aria-label="בחירת שלוחה">${Object.keys(BRANCHES).map((b) => `<button role="tab" aria-selected="${b === me.branch}" class="${b === me.branch ? 'on' : ''}" data-act="set-branch" data-b="${esc(b)}">${esc(b)}</button>`).join('')}</div>` : ''}
 <div class="hero-towns">${br.authorities.map((a) => `<span>${esc(a)}</span>`).join('')}</div></header>
@@ -927,12 +928,13 @@ V.event = (id) => {
   const t = EVT[ev.typeId], ph = ev.phase, phObj = PHASES.find((p) => p.id === ph);
   const items = t.checklist[ph] || [];
   const closed = !!ev.closedAt;
-  return `<div class="head" style="position:sticky;top:0;z-index:20">${closed ? '' : statusBar(ev)}${appBar(shortEv(ev.typeId) + ' · ' + ev.authorities.join(', '), (ev.mode === 'ongoing' ? 'מתמשך' : 'נקודתי') + ' · נפתח ' + whenLabel(ev.startedAt) + (closed ? ' · נסגר' : ''), '#/home', `<a class="ab-act" href="#/event/${ev.id}/log" aria-label="יומן אירוע">${icon('book')}</a>`)}</div>
+  return `<div class="head" style="position:sticky;top:0;z-index:20">${closed ? '' : statusBar(ev)}${appBar(shortEv(ev.typeId) + ' · ' + ev.authorities.join(', '), (ev.mode === 'ongoing' ? 'מתמשך' : 'נקודתי') + ' · נפתח ' + whenLabel(ev.startedAt) + (closed ? ' · נסגר' : ''), '#/home', `<a class="ab-act" href="#/event/${ev.id}/log" aria-label="יומן אירוע">${icon('book')}</a><button class="ab-act" data-act="del-ev" data-ev="${ev.id}" aria-label="מחיקת האירוע">${icon('trash')}</button>`)}</div>
 <main class="pad">
   ${principlesBanner()}
   ${ev.mode === 'ongoing' && !closed ? `<div class="dayrow">${icon('repeat')}<div class="row-t"><b>יום ${ev.day} לאירוע</b><span>${ev.history.length ? 'ימים קודמים נשמרו ביומן' : 'חזרה יומית על השלבים'}</span></div><button class="btn btn-sec btn-s" data-act="newday" data-ev="${ev.id}">התחל יום חדש</button></div>` : ''}
   <div class="stepper" role="tablist">${PHASES.map((p) => { const c = phaseCounts(ev, p.id); return `<button class="stp ${p.id === ph ? 'on' : ''} ${c.done === c.total && c.total ? 'full' : ''}" data-ph="${p.id}" role="tab" aria-selected="${p.id === ph}" data-act="phase" data-ev="${ev.id}" data-v="${p.id}"><span class="stp-n">${PH_NUM[p.id]}</span><span class="stp-t">${esc(p.name)}</span><span class="stp-c">${c.done}/${c.total}</span></button>`; }).join('')}</div>
   <div class="stg-h"><span class="num">${PH_NUM[ph]}</span><div><h2>${esc(phObj.name)}</h2><p>${esc(phObj.summary)} · ${esc(phObj.timingHint)}</p></div></div>
+  ${MAASE_EV.includes(ev.typeId) ? maaseLink(ev) : ''}
   ${ph === 'immediate' ? q6Card(ev) : ''}
   <ul class="its">${items.map((it) => itemCard(ev, it)).join('')}</ul>
   ${t.sourceGaps ? `<p class="src">${icon('info')} פערי מקור: ${esc([].concat(t.sourceGaps).join(' · '))}</p>` : ''}
@@ -946,6 +948,47 @@ V.event = (id) => {
 <div class="bottom"><div class="btn-row"><a class="btn btn-pri" style="flex:2" href="#/event/${ev.id}/report">${icon('send', 'ic-s')} דיווח למנהלת המרכז</a>${closed ? `<a class="btn btn-sec" href="#/event/${ev.id}/summary">סיכום</a>` : `<button class="btn btn-sec" data-act="close-ev" data-ev="${ev.id}">סגור אירוע</button>`}</div></div>`;
 };
 const Q6 = DATA.events.questions6;
+
+// ───────────── מודל מעש"ה – עזרה ראשונה נפשית (לפי הנחיית מנהלת המרכז ומצגת משאבים) ─────────────
+const MAASE_EV = ['mci', 'direct_hit', 'terror'];
+const MAASE = {
+  goal: 'המטרה היא לא לעבד את הטראומה אלא לספק סיוע ראשוני: להפחית חוסר אונים, להשיב תחושת ביטחון ולסייע להתמצא במה שקורה עכשיו. המודל מחזיר אדם לתפקוד תוך דקה וחצי עד שתי דקות.',
+  medical: ['נפגע פיזית – לוודא שהוא מקבל טיפול רפואי מתאים', 'מבולבל או מתקשה להתמצא', 'מתקשה לנשום', 'מצבו מחמיר'],
+  steps: [
+    { l: 'מ', t: 'יצירת מחויבות', from: 'בדידות', to: 'שייכות', c: '#0B3954',
+      d: ['לדבר ברוגע, במשפטים קצרים וברורים', 'להישאר איתו ולוודא שאינו נשאר לבד במצוקה'],
+      say: ['״אני כאן איתך עכשיו. אתה לא צריך להתמודד עם זה לבד.״'] },
+    { l: 'ע', t: 'עידוד לפעולה', from: 'חוסר אונים', to: 'תחושת מסוגלות ורצון לפעול', c: '#0F766E',
+      d: ['לשאול שאלות פשוטות שמחזירות תחושת בחירה ושליטה', 'לתת לו משימה קטנה ומיידית'],
+      say: ['״אתה רוצה שאשב לידך?״', '״למי חשוב לך שנודיע?״', '״מה יעזור לך כרגע – שאהיה כאן בשקט או שנדבר קצת?״'] },
+    { l: 'ש', t: 'שאלות המחייבות מחשבה', from: 'הצפה רגשית', to: 'מסוגלות לתקשורת יעילה', c: '#2E8B7A',
+      d: ['שאלות ממוקדות שמפעילות חשיבה – לא שאלות על רגשות', 'לא ללחוץ לספר מה קרה; לאפשר שתיקה, בכי, בלבול'],
+      say: ['״אתה עובר משהו קשה מאוד. אנחנו כאן איתך, ונעבור את הדקות הקרובות צעד־צעד.״'] },
+    { l: 'ה', t: 'הבניית רצף', from: 'בלבול', to: 'הבנה שהאירוע המאיים הסתיים', c: '#4FA88B',
+      d: ['לעזור לו להבין את רצף האירועים ומה צפוי בהמשך, בלי להיכנס לפרטי האירוע', 'להסביר מה יקרה בשלב הבא'],
+      say: ['״היה פיצוץ, נפגעת, ועכשיו אנחנו כאן כדי לעזור לך. אני אסביר לך מה עומד לקרות בשלב הבא.״'] },
+  ],
+  dont: ['לא ללחוץ עליו לספר מה קרה', 'לא לבקש ממנו לשחזר את האירוע', 'לא לומר ״הכול בסדר״ או ״תהיה חזק״'],
+  close: ['לוודא שיש אדם משמעותי שילווה אותו', 'להסביר מה יקרה בשעות הקרובות', 'לתאם המשך קשר ותמיכה (מוקד הסיוע / הפניה לטיפול)'],
+};
+function maaseLink(ev) {
+  return `<a class="maase-lnk" href="#/maase?e=${ev.id}"><span class="maase-ic">מעש"ה</span><span class="row-t"><b>עזרה ראשונה נפשית – מודל מעש"ה</b><span>מה עושים ומה אומרים לנפגע חרדה, בדקה וחצי</span></span>${icon('chevL')}</a>`;
+}
+V.maase = (q) => {
+  const ev = q.e ? getEv(q.e) : null;
+  return `${appBar('מודל מעש"ה', 'עזרה ראשונה נפשית בזמן אירוע', ev ? '#/event/' + ev.id : '#/home')}
+<main class="pad maase">
+  <div class="maase-med" role="alert">${icon('alert')}<div><b>קודם כל – בדיקה רפואית</b><span>אם מתקיים אחד מאלה, פונים מיד לצוות הרפואי ולא מסתפקים בשיחת סיוע:</span><ul>${MAASE.medical.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div></div>
+  <p class="muted">${esc(MAASE.goal)}</p>
+  ${MAASE.steps.map((s) => `<section class="mstep" style="--mc:${s.c}"><div class="mstep-h"><span class="ml">${s.l}</span><div><h3>${esc(s.t)}</h3><span class="mft">${esc(s.from)} ← ${esc(s.to)}</span></div></div>
+    <ul>${s.d.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+    <div class="msay"><b>מה אפשר לומר</b>${s.say.map((x) => `<p>${esc(x)}</p>`).join('')}</div></section>`).join('')}
+  <section class="mdont"><h3>${icon('alert', 'ic-s')} לא לעשות</h3><ul>${MAASE.dont.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>
+  <section class="card"><h3 class="h3">${icon('flag', 'ic-s')} סיום השיחה</h3><ul class="mlist">${MAASE.close.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>
+  ${FLY.auth_maase_model ? `<button class="fl" style="width:100%;text-align:right;margin-top:12px" data-act="fl-open" data-id="auth_maase_model">${flyerThumb(FLY.auth_maase_model)}<span class="fl-t"><b>${esc(FLY.auth_maase_model.title)}</b>${flyerTags(FLY.auth_maase_model)}</span></button>` : ''}
+  <p class="src">${icon('info')} מקור: מודל מעש"ה (משאבים) והנחיית מנהלת המרכז לסיוע ראשוני</p>
+</main>${tabbar('')}`;
+};
 const GP = DATA.events.guidingPrinciples;
 function principlesBanner() {
   return `<details class="principles"><summary>${icon('bulb', 'ic-s')} עקרונות – "צופה משתתף" ועקרונות מנחים${icon('chevD', 'ic-s chev')}</summary>
@@ -1369,7 +1412,7 @@ function settingsSheet() {
   <label class="lbl" for="myphone">הטלפון שלי (נכנס להודעות)</label><input class="inp" id="myphone" type="tel" data-in="set-phone" value="${esc(S.settings.phone)}" placeholder="050-0000000">
   <div class="switch" style="margin-top:10px"><span>${icon('moon', 'ic-s')} מצב כהה</span><button class="btn btn-sec btn-s" data-act="theme">${G.theme === 'dark' ? 'כבה' : 'הפעל'}</button></div>
   <div class="switch"><span>${icon('bell', 'ic-s')} התראות: ${perm === 'granted' ? 'מאושרות' : perm === 'denied' ? 'חסומות בדפדפן' : perm === 'unsupported' ? 'לא נתמך' : 'לא הופעלו'}</span><button class="btn btn-sec btn-s" data-act="notif">${perm === 'granted' ? 'בדיקה' : 'אפשר'}</button></div>
-  <hr class="sep"><div class="btn-row">${G.demo ? '<button class="btn btn-out" data-act="reset">איפוס נתוני הדגמה</button>' : ''}<button class="btn btn-out" data-act="logout">${icon('exit', 'ic-s')} ${G.demo ? 'יציאה ממצב הדגמה' : 'יציאה'}</button></div><p class="muted small" style="margin-top:10px">גרסת אפליקציה ${APP_VERSION}</p>`);
+  <hr class="sep"><div class="btn-row">${G.demo ? '<button class="btn btn-out" data-act="reset">איפוס נתוני הדגמה</button>' : ''}${G.demo ? '' : `<button class="btn btn-out" data-act="pw">${icon('shield', 'ic-s')} שינוי סיסמה</button>`}<button class="btn btn-out" data-act="logout">${icon('exit', 'ic-s')} ${G.demo ? 'יציאה ממצב הדגמה' : 'יציאה'}</button></div><p class="muted small" style="margin-top:10px">גרסת אפליקציה ${APP_VERSION}</p>`);
 }
 function queueSheet() {
   const Q = UI.queue; if (!Q) return;
@@ -1414,6 +1457,7 @@ function render() {
     case 'contacts': html = V.contacts(q); break;
     case 'flyers': html = V.flyers(); break;
     case 'alerts': html = V.alerts(); break;
+    case 'maase': html = V.maase(q); break;
     default: html = V.notFound();
   }
   const y = window.scrollY;
@@ -1447,6 +1491,16 @@ A.newday = (el) => {
   sheet(`<h3>${icon('repeat')} להתחיל יום ${ev.day + 1}?</h3><p class="muted">סימוני "בוצע" של היום (${Object.keys(ev.done).length}) יישמרו בהיסטוריה, והצ'קליסט יתאפס לחזרה יומית על השלבים.</p><div class="btn-row" style="margin-top:14px"><button class="btn btn-pri" data-act="newday-ok" data-ev="${ev.id}">התחל יום חדש</button><button class="btn btn-out" data-act="sheet-close">ביטול</button></div>`);
 };
 A['newday-ok'] = (el) => { const ev = getEv(el.dataset.ev); ev.history.push({ day: ev.day, date: ddmmyyyy(Date.now()), done: ev.done, q6: ev.q6 || {} }); ev.done = {}; ev.q6Prev = ev.q6 || {}; ev.q6 = {}; ev.day++; ev.phase = 'immediate'; addLog(ev, `התחיל יום ${ev.day} באירוע – הצ'קליסט היומי אופס`); save(); closeSheet(); rerender(); toast('יום ' + ev.day + ' התחיל'); };
+A['del-ev'] = (el) => { const ev = getEv(el.dataset.ev); if (!ev) return; sheet(`<h3>${icon('trash')} למחוק את האירוע?</h3><p class="muted">"${esc(evTitle(ev))}" נפתח ${esc(whenLabel(ev.startedAt))}. האירוע, הצ'קליסט והיומן שלו יימחקו מהאפליקציה ומהשרת. מתאים לאירוע שנפתח בטעות.</p><p class="muted small">אם האירוע אמיתי והסתיים – עדיף "סגור אירוע", כדי לשמור תיעוד וסיכום.</p><div class="btn-row" style="margin-top:14px"><button class="btn btn-danger" data-act="del-ok" data-ev="${ev.id}">מחק לצמיתות</button><button class="btn btn-out" data-act="sheet-close">ביטול</button></div>`); };
+A['del-ok'] = (el) => {
+  const id = el.dataset.ev, ev = getEv(id); if (!ev) return;
+  S.events = S.events.filter((e) => e.id !== id);
+  S.deletedEvents = (S.deletedEvents || []).concat(id).slice(-200);
+  (S.assessments || []).forEach((a) => { if (a.eventId === id) a.eventId = ''; });
+  if (UI.assess && UI.assess.eventId === id) UI.assess.eventId = '';
+  save(); send('events.delete', { event_id: id, title: evTitle(ev) });
+  closeSheet(); location.hash = '#/home'; rerender(); toast('האירוע נמחק');
+};
 A['close-ev'] = (el) => { const ev = getEv(el.dataset.ev); sheet(`<h3>${icon('flag')} לסגור את האירוע?</h3><p class="muted">תיווצר טיוטת "סיכום והמלצות לרשות", ותתוזמן תזכורת לתחקיר AAR (24–48 שעות).</p><div class="btn-row" style="margin-top:14px"><button class="btn btn-pri" data-act="close-ok" data-ev="${ev.id}">סגור והפק סיכום</button><button class="btn btn-out" data-act="sheet-close">ביטול</button></div>`); };
 A['close-ok'] = (el) => { const ev = getEv(el.dataset.ev); ev.closedAt = Date.now(); addLog(ev, 'האירוע נסגר. נוצרה טיוטת סיכום לרשות'); send('events.close', { event_id: ev.id }); ev.summary = ''; save(); closeSheet(); location.hash = '#/event/' + ev.id + '/summary'; };
 A.debrief = (el) => { const ev = getEv(el.dataset.ev) || openEvents()[0]; if (!ev) return; ev.debriefAt = Date.now(); addLog(ev, 'התקיים דיבוב ראשון – תזכורת למפגש שני בעוד כשבועיים'); save(); rerender(); toast('תזכורת נקבעה ל-' + ddmm(ev.debriefAt + 14 * 864e5)); };
@@ -1689,6 +1743,14 @@ A.install = async () => {
   if (INSTALL_EVT) { const ev = INSTALL_EVT; INSTALL_EVT = null; ev.prompt(); try { await ev.userChoice; } catch (_) {} render(); return; }
   installHelp();
 };
+A.pw = () => sheet(`<h3>${icon('shield')} שינוי סיסמה</h3>
+  <form data-form="pw">
+  <label class="lbl" for="pw0">הסיסמה הנוכחית</label><input class="inp" id="pw0" name="p0" type="password" dir="ltr" autocomplete="current-password" required>
+  <label class="lbl" for="pw1">סיסמה חדשה <span class="muted">(לפחות 6 תווים)</span></label><input class="inp" id="pw1" name="p1" type="password" dir="ltr" autocomplete="new-password" minlength="6" required>
+  <label class="lbl" for="pw2">שוב את הסיסמה החדשה</label><input class="inp" id="pw2" name="p2" type="password" dir="ltr" autocomplete="new-password" minlength="6" required>
+  <div class="login-err" id="pwerr"></div>
+  <div class="btn-row" style="margin-top:12px"><button class="btn btn-pri" type="submit">שמור</button><button class="btn btn-out" type="button" data-act="sheet-close">ביטול</button></div></form>
+  <p class="muted small" style="margin-top:8px">אחרי השינוי, טלפונים אחרים שמחוברים עם המשתמש הזה יצטרכו להיכנס מחדש.</p>`);
 A['set-branch'] = (el) => {
   const b = el.dataset.b; if (!BRANCHES[b] || b === viewBranch()) return;
   G.viewBranch = b; saveG(); S = null; loadUser(); render(); toast('עברת ל' + BRANCHES[b].name); pullAll();
@@ -1746,7 +1808,7 @@ document.addEventListener('submit', (e) => {
     UI.loggingIn = true; UI.loginMsg = ''; const btn = f.querySelector('.go'); if (btn) { btn.disabled = true; btn.textContent = 'מתחבר…'; }
     api.login(u + ':' + p).then((data) => {
       UI.loggingIn = false; UI.loginMsg = '';
-      G.session = { user: data.user, config: data.config }; G.demo = false;
+      G.session = { user: data.user, config: data.config, username: u }; G.demo = false;
       if (data.config && typeof data.config.dryRun === 'boolean') G.server = { ...(G.server || {}), dryRun: data.config.dryRun, version: data.config.version };
       saveG(); S = null; loadUser(); location.hash = '#/home'; render();
       toast('שלום ' + ME().first);
@@ -1756,6 +1818,17 @@ document.addEventListener('submit', (e) => {
       UI.loginMsg = e.code === 'BAD_CODE' ? 'שם משתמש או סיסמה שגויים' : e.code === 'LOCKED' ? e.message : (e.code === 'NETWORK' || e.code === 'TIMEOUT') ? 'אין חיבור לשרת. בדוק את החיבור ונסה שוב.' : 'הכניסה נכשלה: ' + (e.message || e.code || 'שגיאה');
       render(); const pi = $('#lp'); const ui = $('#lu'); if (ui) ui.value = u; if (pi) pi.focus();
     });
+  } else if (kind === 'pw') {
+    const p0 = String(fd.get('p0') || ''), p1 = String(fd.get('p1') || ''), p2 = String(fd.get('p2') || ''); const err = $('#pwerr');
+    if (!G.session || !G.session.username) { err.textContent = 'כדי לשנות סיסמה צריך לצאת ולהיכנס שוב פעם אחת'; return; }
+    if (p1.length < 6) { err.textContent = 'הסיסמה צריכה לפחות 6 תווים'; return; }
+    if (p1 !== p2) { err.textContent = 'הסיסמאות לא זהות'; return; }
+    if (/^(\d)\1+$/.test(p1) || ['123456', '1234567', '12345678', '654321', '000000'].includes(p1)) { err.textContent = 'הסיסמה פשוטה מדי. בחר סיסמה אחרת'; return; }
+    if (!navigator.onLine) { err.textContent = 'שינוי סיסמה דורש חיבור לאינטרנט'; return; }
+    err.textContent = 'שומר…';
+    api.call('auth.changeCode', { username: G.session.username, old: p0, next: p1 }, { queueable: false })
+      .then((r) => api.setToken(r.token)).then(() => { closeSheet(); toast('הסיסמה עודכנה'); })
+      .catch((e) => { err.textContent = e.code === 'BAD_CODE' ? 'הסיסמה הנוכחית שגויה' : e.code === 'WEAK' ? 'הסיסמה פשוטה מדי' : e.code === 'IN_USE' ? 'בחר סיסמה אחרת' : e.code === 'UNKNOWN_ACTION' ? 'השרת עוד לא מעודכן לשינוי סיסמה' : 'השמירה נכשלה: ' + (e.message || e.code); });
   } else if (kind === 'ct-save') {
     const name = String(fd.get('name')).trim(), phone = String(fd.get('phone')).trim();
     if (!normPhone(phone).valid) { toast('מספר טלפון לא תקין'); return; }

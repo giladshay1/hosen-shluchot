@@ -20,7 +20,7 @@
 const DB_NAME = 'hosen-app';
 const DB_VERSION = 1;
 let SEQ = 0;   // tie-breaker for writes queued in the same millisecond
-const QUEUEABLE = new Set(['events.create', 'events.setStep', 'events.close', 'contacts.upsert', 'contacts.delete', 'log', 'sessions.add']);
+const QUEUEABLE = new Set(['events.create', 'events.setStep', 'events.close', 'events.delete', 'contacts.upsert', 'contacts.delete', 'log', 'sessions.add']);
 const CACHEABLE = new Set(['config', 'contacts.list', 'events.list', 'events.get', 'flyers.list']);
 
 function uuid() {
@@ -83,6 +83,10 @@ export class Api {
     await idb('kv', 'readwrite', (s) => s.put({ key: 'token', value: data.token }));
     await this.putCache('config', {}, data.config);
     return data;
+  }
+  async setToken(t) {
+    this.token = t;
+    await idb('kv', 'readwrite', (s) => s.put({ key: 'token', value: t }));
   }
   async logout() {
     this.token = null;
