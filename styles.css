@@ -471,3 +471,7 @@ button.ab-act{background:none;border:0;cursor:pointer;font:inherit}
 /* v1.2.1: guest login */
 .login-guest{margin-top:10px;min-height:48px;padding:0 28px;border-radius:999px;border:2px solid #0E6E6A;background:#E8F4F3;color:#0B2A3C;font:inherit;font-size:16px;font-weight:700;cursor:pointer}
 .login-guest-sub{margin-top:6px;font-size:13px;color:#4A5F6A;text-align:center;max-width:300px;line-height:1.4}
+
+/* v1.2.2: presence pill under the avatar */
+.hero-avcol{display:flex;flex-direction:column;align-items:center;gap:6px;flex:none}
+.hero-avcol .pres-pill{margin:0;height:24px;padding:0 8px;font-size:12px}

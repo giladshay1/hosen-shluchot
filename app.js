@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.2.2';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -873,8 +873,8 @@ V.home = () => {
   if (live() && !WEEK.cache[weekKey(0)]) setTimeout(() => loadWeek(0, false), 0);
   const weekCount = live() && weekCountLive() !== null ? weekCountLive() : sessionsInWeek(0).filter((s) => s.status === 'תואם').length;
   return `
-<header class="hero"><div class="hero-top"><img class="hero-logo" src="${LOGOS.shieldFull}" alt=""><div style="flex:1;min-width:0"><div class="hero-k">מרכז חוסן גליל מערבי · שלום ${esc(me.first)}${me.title ? ' · ' + esc(me.title) : ''}</div><div class="hero-n">${esc(br.name)}</div></div><span class="hero-mash"><img src="${LOGOS.maashavim}" alt="משאבים"></span><button class="hero-av" data-act="settings" aria-label="הגדרות ופרופיל">${esc(me.initials)}</button></div>
-<div class="hero-sync">${syncSlot(false)}${presenceSlot()}</div>
+<header class="hero"><div class="hero-top"><img class="hero-logo" src="${LOGOS.shieldFull}" alt=""><div style="flex:1;min-width:0"><div class="hero-k">מרכז חוסן גליל מערבי · שלום ${esc(me.first)}${me.title ? ' · ' + esc(me.title) : ''}</div><div class="hero-n">${esc(br.name)}</div></div><span class="hero-mash"><img src="${LOGOS.maashavim}" alt="משאבים"></span><span class="hero-avcol"><button class="hero-av" data-act="settings" aria-label="הגדרות ופרופיל">${esc(me.initials)}</button>${presenceSlot()}</span></div>
+<div class="hero-sync">${syncSlot(false)}</div>
 ${me.cluster ? `<div class="br-sw" role="tablist" aria-label="בחירת שלוחה">${Object.keys(BRANCHES).map((b) => `<button role="tab" aria-selected="${b === me.branch}" class="${b === me.branch ? 'on' : ''}" data-act="set-branch" data-b="${esc(b)}">${esc(b)}</button>`).join('')}</div>` : ''}
 <div class="hero-towns">${br.authorities.map((a) => `<span>${esc(a)}</span>`).join('')}</div></header>
 <main class="pad">
