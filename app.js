@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -100,7 +100,7 @@ const BRANCHES = {
   'הר': { name: 'שלוחת ההר', the: 'ההר', tab: 'הר', authorities: ['חורפיש', 'פסוטה', "בית ג'ן", 'מעיליא', 'מעלות-תרשיחא', 'כסרא-סמיע', 'פקיעין', 'תפן'] },
 };
 /** Offline demo user ("מצב הדגמה" on the login screen). Real users come from the server (login → user + config). */
-const DEMO_USER = { name: 'משתמש הדגמה', first: 'אורח', branch: 'ים', initials: 'הד' };
+const DEMO_USER = { name: 'אורח', first: 'אורח', branch: 'ים', initials: 'או' };
 /** Authority values the tracking sheet accepts in every branch (activities spanning several authorities). */
 const EXTRA_AUTH = ['אזורי', 'רוחבי'];
 const AUTH_ALIASES = { 'מעלות-תרשיחא': ['מעלות', 'תרשיחא'], "ג'דיידה-מכר": ["ג'דיידה", 'גדיידה', 'מכר'], 'כסרא-סמיע': ['כסרא', 'סמיע'], "ג'וליס": ['גוליס', 'ג׳וליס'], "בית ג'ן": ['בית גן', 'בית ג׳ן'], 'נהריה': ['נהרייה'] };
@@ -244,7 +244,7 @@ const api = new Api(API_URL);
 const SYNC = { online: navigator.onLine, pending: 0, failed: 0, flushing: false, err: null, needPull: false, lastPull: null, pulling: false };
 const aiAvailable = () => live() && !!G.server && G.server.mockAi === false;   // server AI only when the server says it is real
 function syncState() {
-  if (G.demo) return { cls: 'demo', label: 'הדגמה – לא מחובר', short: 'הדגמה' };
+  if (G.demo) return { cls: 'demo', label: 'מצב אורח – נתוני דוגמה', short: 'אורח' };
   const off = !navigator.onLine || SYNC.err === 'NETWORK' || SYNC.err === 'TIMEOUT';
   if (SYNC.failed) return { cls: 'fail', label: SYNC.failed + ' פעולות נכשלו', short: SYNC.failed + ' נכשלו' };
   if (off) return { cls: 'off', label: 'לא מקוון' + (SYNC.pending ? ' · ' + SYNC.pending + ' ממתינות' : ''), short: SYNC.pending ? 'לא מקוון · ' + SYNC.pending : 'לא מקוון' };
@@ -862,7 +862,8 @@ V.login = () => `
   </form>
   <div class="login-err" id="lerr" role="alert">${esc(UI.loginMsg || '')}</div>
   ${installBtn()}
-  <button class="login-demo" data-act="demo">מצב הדגמה – בלי חיבור לשרת, נתוני דמה בלבד</button>
+  <button class="login-guest" data-act="demo">👤 כניסה כאורח</button>
+  <div class="login-guest-sub">להתנסות באפליקציה עם נתוני דוגמה – בלי שם משתמש ובלי חיבור לטבלה</div>
   <div class="login-foot">מרכז חוסן אשכול גליל מערבי · בהפעלת משאבים · גרסה ${APP_VERSION}</div>
 </div>`;
 
@@ -1526,10 +1527,11 @@ function placeMaanim() {
 const LIVE = { presence: [], me: null, since: 0, timer: null, busy: false, lastOk: 0 };
 const VOICE = { list: [], unheard: 0, playing: false, queue: [], blobs: {}, target: LS.get('hosen:ptt-target') || 'all', autoplay: LS.get('hosen:ptt-auto') !== false, rec: null };
 const agoLabel = (t) => { if (!t) return 'עוד לא התחבר'; const s = Math.max(0, (Date.now() - t) / 1000); if (s < 90) return 'עכשיו'; const m = Math.round(s / 60); if (m < 60) return 'לפני ' + m + ' דק׳'; const h = Math.round(m / 60); if (h < 24) return 'לפני ' + h + ' שע׳'; return whenLabel(t); };
-const presenceSlot = () => live() ? `<button class="pres-pill" data-act="pres" aria-label="מי מחובר">${presInner()}</button>` : '';
+const presenceSlot = () => (live() || G.demo) ? `<button class="pres-pill" data-act="pres" aria-label="מי מחובר">${presInner()}</button>` : '';
 function presInner() { const n = LIVE.presence.filter((p) => p.online).length; return `<span class="pres-dot ${n ? 'on' : ''}"></span><b>${LIVE.lastOk ? n : '·'}</b>`; }
 function paintPresence() { document.querySelectorAll('.pres-pill').forEach((b) => { b.innerHTML = presInner(); }); paintPtt(); if ($('#sheet-root .pres-sheet')) actPres(); }
 async function livePing() {
+  if (G.demo) { demoPresence(); paintPresence(); return; }
   if (!live() || LIVE.busy || document.hidden || !navigator.onLine) return;
   LIVE.busy = true;
   try {
@@ -1542,6 +1544,17 @@ async function livePing() {
     }
   } catch (e) { /* ננסה שוב בסבב הבא */ }
   LIVE.busy = false;
+}
+function demoPresence() {
+  const now = Date.now(), m = 60000;
+  LIVE.me = 'me'; LIVE.lastOk = now;
+  LIVE.presence = [
+    { id: 'me', name: 'אורח (אתה)', branch: 'ים', title: '', lastSeen: now, online: true },
+    { id: 'd1', name: 'מנהלת המרכז (דוגמה)', branch: CLUSTER, title: 'מנהלת מרכז החוסן', lastSeen: now - 20000, online: true },
+    { id: 'd2', name: 'ראש שלוחת נחלים (דוגמה)', branch: 'נחלים', title: '', lastSeen: now - 40000, online: true },
+    { id: 'd3', name: 'ראש שלוחת ציר 70 (דוגמה)', branch: 'ציר 70', title: '', lastSeen: now - 25 * m, online: false },
+    { id: 'd4', name: 'ראש שלוחת ההר (דוגמה)', branch: 'הר', title: '', lastSeen: now - 3 * 60 * m, online: false },
+  ];
 }
 function liveStart() {
   if (LIVE.timer) return;
@@ -1581,7 +1594,7 @@ function ensurePtt() {
 }
 function paintPtt() {
   const b = document.getElementById('ptt'); if (!b) return;
-  const show = live() && !/^#\/(maanim)/.test(location.hash) && !$('#sheet-root .sheet');
+  const show = (live() || G.demo) && !/^#\/(maanim)/.test(location.hash) && !$('#sheet-root .sheet');
   b.hidden = !show;
   const bd = b.querySelector('.ptt-badge'); bd.hidden = !VOICE.unheard; bd.textContent = VOICE.unheard || '';
   b.querySelector('.ptt-tg').textContent = pttTargetLabel(VOICE.target);
@@ -1629,6 +1642,7 @@ async function pttFinish(R) {
   const data = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.readAsDataURL(blob); });
   const requestId = 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   VOICE.blobs[requestId] = URL.createObjectURL(blob);
+  if (G.demo) { VOICE.list.push({ id: requestId, ts: Date.now(), fromId: 'me', fromName: 'אורח', target: VOICE.target, duration: Math.round(dur), heard: true }); toast('מצב אורח: ההודעה הוקלטה אבל לא נשלחה. אפשר לשמוע אותה בלוח הקשר', 3500); if ($('#sheet-root .voice-sheet')) actVoice(); return; }
   const meName = (ME() && ME().name) || 'אני';
   VOICE.list.push({ id: requestId, ts: Date.now(), fromId: LIVE.me, fromName: meName, target: VOICE.target, duration: Math.round(dur), heard: true, pending: true });
   if (navigator.vibrate) navigator.vibrate([20, 40, 20]);
@@ -1703,7 +1717,7 @@ function settingsSheet() {
   <label class="lbl" for="myphone">הטלפון שלי (נכנס להודעות)</label><input class="inp" id="myphone" type="tel" data-in="set-phone" value="${esc(S.settings.phone)}" placeholder="050-0000000">
   <div class="switch" style="margin-top:10px"><span>${icon('moon', 'ic-s')} מצב כהה</span><button class="btn btn-sec btn-s" data-act="theme">${G.theme === 'dark' ? 'כבה' : 'הפעל'}</button></div>
   <div class="switch"><span>${icon('bell', 'ic-s')} התראות: ${perm === 'granted' ? 'מאושרות' : perm === 'denied' ? 'חסומות בדפדפן' : perm === 'unsupported' ? 'לא נתמך' : 'לא הופעלו'}</span><button class="btn btn-sec btn-s" data-act="notif">${perm === 'granted' ? 'בדיקה' : 'אפשר'}</button></div>
-  <hr class="sep"><div class="btn-row">${G.demo ? '<button class="btn btn-out" data-act="reset">איפוס נתוני הדגמה</button>' : ''}${G.demo ? '' : `<button class="btn btn-out" data-act="pw">${icon('shield', 'ic-s')} שינוי סיסמה</button>`}<button class="btn btn-out" data-act="logout">${icon('exit', 'ic-s')} ${G.demo ? 'יציאה ממצב הדגמה' : 'יציאה'}</button></div><p class="muted small" style="margin-top:10px">גרסת אפליקציה ${APP_VERSION}</p>`);
+  <hr class="sep"><div class="btn-row">${G.demo ? '<button class="btn btn-out" data-act="reset">איפוס נתוני הדגמה</button>' : ''}${G.demo ? '' : `<button class="btn btn-out" data-act="pw">${icon('shield', 'ic-s')} שינוי סיסמה</button>`}<button class="btn btn-out" data-act="logout">${icon('exit', 'ic-s')} ${G.demo ? 'יציאה ממצב אורח' : 'יציאה'}</button></div><p class="muted small" style="margin-top:10px">גרסת אפליקציה ${APP_VERSION}</p>`);
 }
 function queueSheet() {
   const Q = UI.queue; if (!Q) return;
@@ -1755,7 +1769,7 @@ function render() {
   const y = window.scrollY;
   app.innerHTML = html;
   try { syncMaanim(a === 'maanim'); } catch (_) {}
-  try { if (live()) { ensurePtt(); liveStart(); } paintPtt(); } catch (_) {}
+  try { if (live() || G.demo) { ensurePtt(); liveStart(); } paintPtt(); } catch (_) {}
   if (routeKey !== lastRoute) { window.scrollTo(0, 0); lastRoute = routeKey; if (a !== 'contacts') UI.ctAddDone = false; } else window.scrollTo(0, y);
   const t = $('.ab-title') || $('.hero-n'); document.title = (t ? t.textContent + ' · ' : '') + 'חוסן שלוחות';
 }
@@ -2062,7 +2076,7 @@ A['set-branch'] = (el) => {
   const b = el.dataset.b; if (!BRANCHES[b] || b === viewBranch()) return;
   G.viewBranch = b; saveG(); S = null; loadUser(); render(); toast('עברת ל' + BRANCHES[b].name); pullAll();
 };
-A.demo = () => { G.demo = true; G.session = null; saveG(); S = null; loadUser(); location.hash = '#/home'; render(); toast('מצב הדגמה – נתוני דמה, בלי חיבור לשרת'); };
+A.demo = () => { G.demo = true; G.session = null; saveG(); S = null; loadUser(); location.hash = '#/home'; render(); toast('מצב אורח – נתוני דוגמה בלבד, שום דבר לא נשמר בטבלה', 3500); };
 A.sync = () => {
   if (G.demo) { toast('במצב הדגמה אין חיבור לשרת'); return; }
   if (SYNC.failed) { sheet(`<h3>${icon('alert')} ${SYNC.failed} פעולות נכשלו</h3><p class="muted">השרת דחה אותן כמה פעמים (למשל ערך לא תקין). אפשר לנסות שוב, או למחוק אותן מהתור.</p><div class="btn-row" style="margin-top:14px"><button class="btn btn-pri" data-act="sync-now">נסה שוב</button><button class="btn btn-out" data-act="sync-discard">מחק מהתור</button></div>`); return; }
@@ -2159,6 +2173,7 @@ setInterval(() => { document.querySelectorAll('[data-elapsed]').forEach((el) => 
 { const fc = LS.get('hosen:fac'); if (fc) setFacilitators(fc); }
 const hasToken = await api.init().catch(() => false);
 if (G.session && !hasToken) { G.session = null; saveG(); }   // token storage was cleared → sign in again
+if (/[?&]guest=1/.test(location.search) && !G.session && !G.demo) { G.demo = true; saveG(); S = null; history.replaceState(null, '', location.pathname + '#/home'); setTimeout(() => toast('ברוכים הבאים! מצב אורח – נתוני דוגמה בלבד', 3500), 600); }
 render();
 api.emit();
 setTimeout(checkNotifications, 1500);
