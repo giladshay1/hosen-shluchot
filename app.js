@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.0.8';
+const APP_VERSION = '1.0.9';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -868,7 +868,8 @@ V.login = () => `
 V.home = () => {
   const me = ME(), br = BR(), evs = openEvents();
   const rems = evs.flatMap((e) => remindersFor(e).filter((r) => r.at).map((r) => ({ ...r, ev: e }))).sort((a, b) => a.at - b.at).slice(0, 3);
-  const weekCount = sessionsInWeek(0).filter((s) => s.status === 'תואם').length;
+  if (live() && !WEEK.cache[weekKey(0)]) setTimeout(() => loadWeek(0, false), 0);
+  const weekCount = live() && weekCountLive() !== null ? weekCountLive() : sessionsInWeek(0).filter((s) => s.status === 'תואם').length;
   return `
 <header class="hero"><div class="hero-top"><img class="hero-logo" src="${LOGOS.shieldFull}" alt=""><div style="flex:1;min-width:0"><div class="hero-k">מרכז חוסן גליל מערבי · שלום ${esc(me.first)}${me.title ? ' · ' + esc(me.title) : ''}</div><div class="hero-n">${esc(br.name)}</div></div><span class="hero-mash"><img src="${LOGOS.maashavim}" alt="משאבים"></span><button class="hero-av" data-act="settings" aria-label="הגדרות ופרופיל">${esc(me.initials)}</button></div>
 <div class="hero-sync">${syncSlot(false)}</div>
@@ -1165,9 +1166,10 @@ const TAB = { key: null, data: null, loading: false, err: null, at: 0 };
 async function loadTab(force) {
   if (!live() || TAB.loading) return;
   const key = userKey(); if (!force && TAB.key === key && Date.now() - TAB.at < 120000) return;
+  if (!force && TAB.key === key && TAB.failAt && Date.now() - TAB.failAt < 60000) return;
   TAB.loading = true; TAB.err = null; TAB.key = key;
   try { const r = await api.call('sessions.recent', { limit: 15 }, { queueable: false }); if (r && Array.isArray(r.rows)) { TAB.data = r; TAB.at = Date.now(); } }
-  catch (e) { TAB.err = (e && e.message) || 'שגיאה'; }
+  catch (e) { TAB.err = (e && e.message) || 'שגיאה'; TAB.failAt = Date.now(); }
   TAB.loading = false; if (location.hash.startsWith('#/intake')) rerender();
 }
 function tabPanel() {
@@ -1270,7 +1272,7 @@ function sessionsInWeek(off) {
   const sun = startOfDay(new Date()); sun.setDate(sun.getDate() - sun.getDay() + 7 * off); const sat = new Date(sun); sat.setDate(sun.getDate() + 7);
   return S.sessions.filter((s) => { const d = parseDMY(s.date); return d && d >= sun && d < sat; }).sort((a, b) => parseDMY(a.date) - parseDMY(b.date) || String(a.hours).localeCompare(String(b.hours)));
 }
-V.week = () => {
+V.weekLocal = () => {
   const off = UI.weekOff; const sun = startOfDay(new Date()); sun.setDate(sun.getDate() - sun.getDay() + 7 * off); const sat = new Date(sun); sat.setDate(sun.getDate() + 6);
   const list = sessionsInWeek(off); const byDay = {}; list.forEach((s) => (byDay[s.date] = byDay[s.date] || []).push(s));
   const upcoming = S.sessions.filter((s) => { const d = parseDMY(s.date); return d && d > sat; }).length;
@@ -1284,6 +1286,50 @@ V.week = () => {
 </main>
 <div class="bottom"><a class="btn btn-sec btn-xl" href="#/intake">${icon('plus', 'ic-s')} קליטת קבוצה מהודעה</a></div>`;
 };
+// ---------- "השבוע שלי" from the branch tab in the tracking sheet (sessions.week / sessions.setStatus) ----------
+const WEEK = { cache: {}, loading: null, err: null, fail: {} };
+function weekBounds(off) { const sun = startOfDay(new Date()); sun.setDate(sun.getDate() - sun.getDay() + 7 * off); const sat = new Date(sun); sat.setDate(sun.getDate() + 6); return { sun, sat }; }
+const weekKey = (off) => userKey() + '|' + off;
+async function loadWeek(off, force) {
+  if (!live()) return; const k = weekKey(off), c = WEEK.cache[k];
+  if (!force && c && Date.now() - c.at < 120000) return; if (WEEK.loading === k) return;
+  if (!force && WEEK.fail[k] && Date.now() - WEEK.fail[k] < 60000) return;
+  WEEK.loading = k; WEEK.err = null; if (location.hash.startsWith('#/week')) rerender();
+  const { sun, sat } = weekBounds(off);
+  try { const r = await api.call('sessions.week', { from: ddmmyyyy(sun), to: ddmmyyyy(sat) }, { queueable: false }); if (r && Array.isArray(r.rows)) WEEK.cache[k] = { ...r, at: Date.now() }; }
+  catch (e) { WEEK.err = (e && e.message) || 'שגיאה'; WEEK.fail[k] = Date.now(); }
+  WEEK.loading = null; if (location.hash.startsWith('#/week') || location.hash === '#/home' || location.hash === '') rerender();
+}
+function weekCountLive() { const c = WEEK.cache[weekKey(0)]; return c ? c.rows.filter((r) => r.status === 'תואם').length : null; }
+V.week = () => {
+  if (!live()) return V.weekLocal();
+  const off = UI.weekOff || 0, { sun, sat } = weekBounds(off), k = weekKey(off), c = WEEK.cache[k];
+  if (!c || Date.now() - c.at > 120000) setTimeout(() => loadWeek(off, false), 0);
+  const rows = c ? c.rows.slice().sort((a, b) => (parseDMY(a.date) - parseDMY(b.date)) || String(a.hours).localeCompare(String(b.hours))) : [];
+  const byDay = {}; rows.forEach((r) => (byDay[r.date] = byDay[r.date] || []).push(r));
+  const cnt = (st) => rows.filter((r) => r.status === st).length;
+  return `${appBar('השבוע שלי', 'מתוך טבלת המעקב · לשונית ' + (c ? c.tab : BR().tab), '#/home')}
+<main class="pad">
+  <div class="weeknav"><button class="icon-btn" data-act="wk" data-v="-1" aria-label="שבוע קודם">${icon('chevR')}</button><div style="text-align:center"><b>${ddmm(sun)} – ${ddmm(sat)}</b><div class="muted">${off === 0 ? 'השבוע' : off === 1 ? 'שבוע הבא' : off === -1 ? 'שבוע שעבר' : ''}</div></div><button class="icon-btn" data-act="wk" data-v="1" aria-label="שבוע הבא">${icon('chevL')}</button></div>
+  <div class="tags" style="justify-content:center;margin-bottom:6px"><span class="tag">${cnt('תואם')} תואם</span><span class="tag ok">${cnt('בוצע')} בוצע</span><span class="tag bad">${cnt('בוטלה')} בוטלה</span></div>
+  <div class="sec"><span>${WEEK.loading === k ? 'טוען מהטבלה…' : c ? rows.length + ' מפגשים בלשונית' : ''}</span><button class="lnk" data-act="wk-refresh">רענן</button></div>
+  ${WEEK.err ? `<div class="banner-demo">${icon('info', 'ic-s')}<span>לא הצלחתי לטעון מהטבלה (${esc(WEEK.err)}).</span></div>` : ''}
+  ${c && !rows.length ? '<div class="empty">אין מפגשים בשבוע הזה בלשונית.</div>' : ''}
+  ${Object.entries(byDay).map(([d, ss]) => { const dt = parseDMY(d); return `<div class="day-h ${dt && isSameDay(dt, new Date()) ? 'today' : ''}">${icon('cal', 'ic-s')} ${dt ? 'יום ' + DAYS[dt.getDay()] + ' · ' : ''}${esc(d)}${dt && isSameDay(dt, new Date()) ? ' · היום' : ''}</div>${ss.map(weekCard).join('')}`; }).join('')}
+  ${c && c.url ? `<a class="btn btn-out" style="margin-top:12px;width:100%" href="${esc(c.url)}" target="_blank" rel="noopener">${icon('table', 'ic-s')} פתח את הלשונית בגוגל שיטס</a>` : ''}
+  <p class="muted small" style="margin-top:10px">מוצגים כל המפגשים מהלשונית של השלוחה, לא משנה מי הזין אותם. סימון "בוצע" / "בוטלה" מעדכן את עמודת הסטטוס בטבלה – אחרי אישור.</p>
+</main>
+<div class="bottom"><a class="btn btn-sec btn-xl" href="#/intake">${icon('plus', 'ic-s')} קליטת קבוצה מהודעה</a></div>`;
+};
+function weekCard(r) {
+  const cls = r.status === 'בוצע' ? 's-done' : r.status === 'בוטלה' ? 's-cancel' : '';
+  const b = (v, label, ic) => `<button class="btn btn-out ${r.status === v ? (v === 'בוטלה' ? 'sel-cancel' : 'sel-done') : ''}" data-act="wst" data-row="${r.row}" data-v="${v}" ${r.status === v ? 'disabled' : ''}>${icon(ic, 'ic-s')} ${label}</button>`;
+  return `<div class="ss ${cls}"><div class="ss-top"><b>${esc(r.activityName || r.activityType)}${r.audience ? ' · ' + esc(r.audience) : ''}</b><span class="ss-h" dir="ltr">${esc(r.hours)}</span></div>
+  <div class="meta">${esc([r.authority, r.locality && r.locality !== r.authority ? r.locality : '', r.location].filter(Boolean).join(' · '))}${r.sessionNumber ? ' · מפגש ' + esc(r.sessionNumber) + (r.expectedSessions ? '/' + esc(r.expectedSessions) : '') : ''}</div>
+  <div class="meta">מנחה: ${esc(r.facilitator || '—')} · סטטוס בטבלה: <b>${esc(r.status || '—')}</b> · שורה ${r.row}</div>
+  <div class="btn-row">${b('בוצע', 'בוצע', 'check')}${b('בוטלה', 'בוטלה', 'x')}${r.status && r.status !== 'תואם' ? b('תואם', 'החזר לתואם', 'cal') : ''}</div></div>`;
+}
+function weekRowByNum(row) { const c = WEEK.cache[weekKey(UI.weekOff || 0)]; return c ? c.rows.find((r) => String(r.row) === String(row)) : null; }
 function sessionCard(s) {
   const cls = s.status === 'בוצעה' ? 's-done' : s.status === 'בוטלה' ? 's-cancel' : '';
   return `<div class="ss ${cls}"><div class="ss-top"><b>${esc(s.activity)} · ${esc(s.audience)}</b><span class="ss-h" dir="ltr">${esc(s.hours)}</span></div>
@@ -1412,11 +1458,12 @@ function alertFeed() {
 }
 async function loadNews(refresh) {
   if (!live() || NEWS.loading) return;
+  if (!refresh && NEWS.failAt && Date.now() - NEWS.failAt < 60000) return;
   NEWS.loading = true; NEWS.err = null; if (location.hash === '#/alerts') rerender();
   try {
     const r = await api.call('news.list', refresh ? { refresh: true } : {}, { queueable: false });
     if (r && Array.isArray(r.items)) { NEWS.items = r.items; NEWS.status = r.status || null; NEWS.at = r.fetchedAt || Date.now(); LS.set('hosen:news', r.items); LS.set('hosen:news-at', NEWS.at); }
-  } catch (e) { NEWS.err = (e && e.message) || 'שגיאה'; }
+  } catch (e) { NEWS.err = (e && e.message) || 'שגיאה'; NEWS.failAt = Date.now(); }
   NEWS.loading = false; if (location.hash === '#/alerts') rerender();
 }
 let NEWS_TIMER = null;
@@ -1640,7 +1687,7 @@ A['in-write'] = async () => {
   I.requestId = I.requestId || newId();   // same id on retry → the server never writes twice
   try {
     const r = await api.call('sessions.add', { rows: sessionRows(R) }, { requestId: I.requestId, queueable: true });
-    I.result = r; I.written = true; setTimeout(() => loadTab(true), 1500); if (r.queued && r.reason === 'network') { SYNC.err = 'NETWORK'; paintSync(); }
+    I.result = r; I.written = true; setTimeout(() => { loadTab(true); WEEK.cache = {}; }, 1500); if (r.queued && r.reason === 'network') { SYNC.err = 'NETWORK'; paintSync(); }
     if (!r.duplicate || !S.sessions.some((x) => x.req === I.requestId)) addLocalSessions(R, { req: I.requestId, queued: !!r.queued, dry: !!r.dryRun });
     save();
     toast(r.queued ? 'אין חיבור – נשמר בתור ויישלח אוטומטית' : r.dryRun ? 'מצב בדיקה – לא נכתב לטבלה' : n + ' שורות נכתבו לטבלת המעקב');
@@ -1780,6 +1827,13 @@ A['fac-pick'] = (el) => { const f = FACS[+el.dataset.i]; const R = UI.intake.res
 A['q6-copy'] = (el) => { const ev = getEv(el.dataset.ev); const q = Q6.find((x) => x.id === el.dataset.q); const v = String((ev.q6Prev || {})[q.id] || '').trim(); if (!v) return; ev.q6 = ev.q6 || {}; ev.q6[q.id] = v; addLog(ev, `בירור – ${q.q} ${v} (הועתק מאתמול)`, 'note'); save(); rerender(); };
 A['al-all'] = () => { UI.alAll = !UI.alAll; rerender(); };
 A['al-refresh'] = () => loadNews(true);
+A['wk-refresh'] = () => { loadWeek(UI.weekOff || 0, true); rerender(); };
+A.wst = (el) => { const r = weekRowByNum(el.dataset.row), v = el.dataset.v; if (!r) return; UI.wst = { row: r.row, v };
+  sheet(`<h3>לעדכן את הסטטוס בטבלת המעקב?</h3><p><b>${esc(r.activityName)}</b> · ${esc(r.date)} ${esc(r.hours || '')}<br><span class="muted">${esc([r.authority, r.location].filter(Boolean).join(' · '))} · שורה ${r.row} בלשונית "${esc((WEEK.cache[weekKey(UI.weekOff || 0)] || {}).tab || BR().tab)}"</span></p><p>הסטטוס ישתנה מ<b>"${esc(r.status || '—')}"</b> ל<b>"${esc(v)}"</b>.</p><div class="btn-row" style="margin-top:14px"><button class="btn ${v === 'בוטלה' ? 'btn-danger' : 'btn-pri'}" data-act="wst-ok">כן, לעדכן בטבלה</button><button class="btn btn-out" data-act="sheet-close">ביטול</button></div>`); };
+A['wst-ok'] = async (el) => { const q = UI.wst; const r = q && weekRowByNum(q.row); if (!r) { closeSheet(); return; } el.disabled = true; el.textContent = 'מעדכן…';
+  try { const res = await api.call('sessions.setStatus', { row: r.row, status: q.v, expect: { date: r.date, activityName: r.activityName } }, { queueable: false });
+    closeSheet(); if (res && res.dryRun) toast('מצב בדיקה – הטבלה לא עודכנה'); else { r.status = q.v; toast('עודכן בטבלה: ' + q.v); } rerender();
+  } catch (e) { closeSheet(); toast((e && e.message) || 'העדכון נכשל'); loadWeek(UI.weekOff || 0, true); } };
 A['tab-refresh'] = () => { loadTab(true); rerender(); };
 A['al-open'] = (el) => { const x = alertFeed().find((a) => a.id === el.dataset.id); if (!x) return; UI.newEv = { typeId: x.typeId, mode: null, auths: x.regional ? [BR().authorities[0]] : x.auths.slice(), time: toLocalInput(x.t || Date.now()), fromAlert: x.title }; location.hash = '#/emergency'; };
 A.theme = () => { G.theme = G.theme === 'dark' ? 'light' : 'dark'; saveG(); applyTheme(); settingsSheet(); };
