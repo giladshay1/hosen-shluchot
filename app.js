@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -829,7 +829,7 @@ const privacyLine = '<p class="muted small" style="margin-top:4px">לפני של
 
 // ───────────── views: shared parts ─────────────
 const back = (href) => `<a class="ab-back" href="${href}" aria-label="חזרה">${icon('back')}</a>`;
-const appBar = (title, sub, backHref, actions = '') => `<header class="ab">${actions ? '' : `<img class="ab-mash" src="${LOGOS.maashavim}" alt="משאבים">`}${backHref ? back(backHref) : ''}<div class="ab-t"><div class="ab-title">${esc(title)}</div>${sub ? `<div class="ab-sub">${esc(sub)}</div>` : ''}</div>${syncSlot(true)}${actions}</header>`;
+const appBar = (title, sub, backHref, actions = '') => `<header class="ab">${actions ? '' : `<img class="ab-mash" src="${LOGOS.maashavim}" alt="משאבים">`}${backHref ? back(backHref) : ''}<div class="ab-t"><div class="ab-title">${esc(title)}</div>${sub ? `<div class="ab-sub">${esc(sub)}</div>` : ''}</div>${syncSlot(true)}${presenceSlot()}${actions}</header>`;
 function statusBar(ev) {
   return `<div class="sbar" role="status"><span class="live-dot"></span><span class="sb-live">אירוע פעיל</span><span>${esc(evTitle(ev))}</span><span class="sb-sep">|</span><span class="sb-k">${icon('clock', 'ic-xs')}<span data-elapsed="${ev.startedAt}">${elapsed(ev.startedAt)}</span></span><span class="sb-sep">|</span><span class="sb-k">הערכת מצב הבאה ${esc(whenLabel(nextAssessment()).replace('היום ', ''))}</span></div>`;
 }
@@ -873,7 +873,7 @@ V.home = () => {
   const weekCount = live() && weekCountLive() !== null ? weekCountLive() : sessionsInWeek(0).filter((s) => s.status === 'תואם').length;
   return `
 <header class="hero"><div class="hero-top"><img class="hero-logo" src="${LOGOS.shieldFull}" alt=""><div style="flex:1;min-width:0"><div class="hero-k">מרכז חוסן גליל מערבי · שלום ${esc(me.first)}${me.title ? ' · ' + esc(me.title) : ''}</div><div class="hero-n">${esc(br.name)}</div></div><span class="hero-mash"><img src="${LOGOS.maashavim}" alt="משאבים"></span><button class="hero-av" data-act="settings" aria-label="הגדרות ופרופיל">${esc(me.initials)}</button></div>
-<div class="hero-sync">${syncSlot(false)}</div>
+<div class="hero-sync">${syncSlot(false)}${presenceSlot()}</div>
 ${me.cluster ? `<div class="br-sw" role="tablist" aria-label="בחירת שלוחה">${Object.keys(BRANCHES).map((b) => `<button role="tab" aria-selected="${b === me.branch}" class="${b === me.branch ? 'on' : ''}" data-act="set-branch" data-b="${esc(b)}">${esc(b)}</button>`).join('')}</div>` : ''}
 <div class="hero-towns">${br.authorities.map((a) => `<span>${esc(a)}</span>`).join('')}</div></header>
 <main class="pad">
@@ -1522,9 +1522,160 @@ function placeMaanim() {
   const top = slot.getBoundingClientRect().top, bottom = tb ? tb.getBoundingClientRect().height : 0;
   host.style.top = Math.max(0, top) + 'px'; host.style.bottom = bottom + 'px';
 }
+// ---------- "מי מחובר" + ווקי טוקי (live.ping / voice.send / voice.get) ----------
+const LIVE = { presence: [], me: null, since: 0, timer: null, busy: false, lastOk: 0 };
+const VOICE = { list: [], unheard: 0, playing: false, queue: [], blobs: {}, target: LS.get('hosen:ptt-target') || 'all', autoplay: LS.get('hosen:ptt-auto') !== false, rec: null };
+const agoLabel = (t) => { if (!t) return 'עוד לא התחבר'; const s = Math.max(0, (Date.now() - t) / 1000); if (s < 90) return 'עכשיו'; const m = Math.round(s / 60); if (m < 60) return 'לפני ' + m + ' דק׳'; const h = Math.round(m / 60); if (h < 24) return 'לפני ' + h + ' שע׳'; return whenLabel(t); };
+const presenceSlot = () => live() ? `<button class="pres-pill" data-act="pres" aria-label="מי מחובר">${presInner()}</button>` : '';
+function presInner() { const n = LIVE.presence.filter((p) => p.online).length; return `<span class="pres-dot ${n ? 'on' : ''}"></span><b>${LIVE.lastOk ? n : '·'}</b>`; }
+function paintPresence() { document.querySelectorAll('.pres-pill').forEach((b) => { b.innerHTML = presInner(); }); paintPtt(); if ($('#sheet-root .pres-sheet')) actPres(); }
+async function livePing() {
+  if (!live() || LIVE.busy || document.hidden || !navigator.onLine) return;
+  LIVE.busy = true;
+  try {
+    const r = await api.call('live.ping', { since: LIVE.since }, { queueable: false });
+    if (r && Array.isArray(r.presence)) {
+      LIVE.presence = r.presence; LIVE.me = r.me; LIVE.lastOk = Date.now();
+      (r.voice || []).forEach((m) => { LIVE.since = Math.max(LIVE.since, m.ts); if (VOICE.list.some((x) => x.id === m.id)) return; const mine = m.fromId === LIVE.me; VOICE.list.push({ ...m, heard: mine }); if (!mine) incomingVoice(m); });
+      VOICE.list = VOICE.list.slice(-40);
+      paintPresence();
+    }
+  } catch (e) { /* ננסה שוב בסבב הבא */ }
+  LIVE.busy = false;
+}
+function liveStart() {
+  if (LIVE.timer) return;
+  if (!LIVE.since) LIVE.since = Date.now() - 10 * 60000; // בכניסה: הודעות מ-10 הדקות האחרונות
+  livePing(); LIVE.timer = setInterval(livePing, 15000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) livePing(); });
+  window.addEventListener('online', () => livePing());
+}
+function actPres() {
+  const me = LIVE.me, list = LIVE.presence.slice().sort((a, b) => (b.online - a.online) || ((b.lastSeen || 0) - (a.lastSeen || 0)));
+  const on = list.filter((p) => p.online), off = list.filter((p) => !p.online);
+  const row = (p) => `<li class="pres-row"><span class="pres-dot ${p.online ? 'on' : ''}"></span><span style="flex:1;min-width:0"><b>${esc(p.name)}${p.id === me ? ' (אני)' : ''}</b><br><small class="muted">${esc([p.branch === CLUSTER ? 'אשכול' : p.branch ? 'שלוחת ' + p.branch : '', p.title].filter(Boolean).join(' · '))}</small></span><small class="${p.online ? 'ok-t' : 'muted'}">${p.online ? 'מחובר/ת' : esc(agoLabel(p.lastSeen))}</small></li>`;
+  sheet(`<div class="pres-sheet"><h3>מי מחובר עכשיו</h3>${!LIVE.lastOk ? '<p class="muted">טוען…</p>' : ''}
+  ${on.length ? `<ul class="pres-list">${on.map(row).join('')}</ul>` : LIVE.lastOk ? '<p class="muted">אין כרגע אף אחד מחובר.</p>' : ''}
+  ${off.length ? `<div class="lbl" style="margin-top:10px">נראו לאחרונה</div><ul class="pres-list">${off.map(row).join('')}</ul>` : ''}
+  <p class="muted small" style="margin-top:8px">"מחובר" = האפליקציה פתוחה אצלו בדקה וחצי האחרונות.</p>
+  <div class="btn-row" style="margin-top:12px"><button class="btn btn-out" data-act="sheet-close">סגור</button></div></div>`);
+};
+
+// ---- push-to-talk ----
+const PTT_TARGETS = () => [['all', 'כל הצוות'], ...Object.keys(BRANCHES).map((b) => [b, 'שלוחת ' + b])];
+const pttTargetLabel = (t) => (PTT_TARGETS().find(([k]) => k === t) || ['', 'כל הצוות'])[1];
+function ensurePtt() {
+  let b = document.getElementById('ptt');
+  if (!b) {
+    b = document.createElement('div'); b.id = 'ptt'; b.className = 'ptt';
+    b.innerHTML = `<button class="ptt-btn" id="ptt-btn" aria-label="לחץ ודבר – החזק כדי להקליט"><svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg><span class="ptt-badge" hidden></span></button><span class="ptt-tg"></span>
+    <div class="ptt-rec" hidden><span class="rec-dot"></span><b class="rec-t">0:00</b><span class="rec-to"></span><small>שחרר לשליחה · גרור הצידה לביטול</small></div>`;
+    document.body.appendChild(b);
+    const btn = b.querySelector('#ptt-btn');
+    btn.addEventListener('contextmenu', (e) => e.preventDefault());
+    btn.addEventListener('pointerdown', pttDown);
+    btn.addEventListener('pointerup', pttUp); btn.addEventListener('pointercancel', () => pttStop(true));
+    btn.addEventListener('pointermove', (e) => { if (VOICE.rec && PTT_XY && Math.hypot(e.clientX - PTT_XY[0], e.clientY - PTT_XY[1]) > 90) pttStop(true); });
+  }
+  return b;
+}
+function paintPtt() {
+  const b = document.getElementById('ptt'); if (!b) return;
+  const show = live() && !/^#\/(maanim)/.test(location.hash) && !$('#sheet-root .sheet');
+  b.hidden = !show;
+  const bd = b.querySelector('.ptt-badge'); bd.hidden = !VOICE.unheard; bd.textContent = VOICE.unheard || '';
+  b.querySelector('.ptt-tg').textContent = pttTargetLabel(VOICE.target);
+}
+let PTT_T0 = 0, PTT_TAP = null, PTT_XY = null;
+async function pttDown(e) {
+  e.preventDefault(); if (VOICE.rec) return;
+  PTT_T0 = Date.now(); PTT_XY = [e.clientX, e.clientY]; const btn = e.currentTarget; try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+  PTT_TAP = setTimeout(() => { PTT_TAP = null; pttStart(); }, 250); // לחיצה קצרה = פתיחת הלוח; החזקה = הקלטה
+}
+function pttUp(e) {
+  if (PTT_TAP) { clearTimeout(PTT_TAP); PTT_TAP = null; actVoice(); return; }
+  pttStop(false);
+}
+async function pttStart() {
+  if (!navigator.mediaDevices || !window.MediaRecorder) { toast('הטלפון הזה לא תומך בהקלטה מהאפליקציה'); return; }
+  const R = VOICE.rec = { chunks: [], t0: Date.now(), cancelled: false, stopped: false };
+  const ui = document.querySelector('#ptt .ptt-rec'); ui.hidden = false; ui.querySelector('.rec-to').textContent = 'אל: ' + pttTargetLabel(VOICE.target);
+  document.getElementById('ptt').classList.add('recording');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    if (R.stopped) { stream.getTracks().forEach((t) => t.stop()); pttReset(); if (!R.cancelled) toast('המיקרופון מוכן – עכשיו החזק את הכפתור ודבר'); return; }
+    const mime = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/webm'].find((m) => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
+    const mr = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 24000 } : { audioBitsPerSecond: 24000 });
+    R.mr = mr; R.stream = stream; R.t0 = Date.now();
+    mr.ondataavailable = (ev) => { if (ev.data && ev.data.size) R.chunks.push(ev.data); };
+    mr.onstop = () => pttFinish(R);
+    mr.start(500);
+    R.tick = setInterval(() => { const s = Math.floor((Date.now() - R.t0) / 1000); ui.querySelector('.rec-t').textContent = Math.floor(s / 60) + ':' + pad2(s % 60); if (s >= 60) pttStop(false); }, 250);
+    if (navigator.vibrate) navigator.vibrate(30);
+  } catch (err) { pttReset(); toast('אין גישה למיקרופון – צריך לאשר הרשאת מיקרופון לאפליקציה'); }
+}
+function pttStop(cancel) {
+  const R = VOICE.rec; if (!R || R.stopped) return; R.stopped = true; R.cancelled = !!cancel;
+  clearInterval(R.tick);
+  if (R.mr && R.mr.state !== 'inactive') R.mr.stop(); else if (!R.mr) { /* עוד מחכה להרשאה */ }
+}
+function pttReset() { VOICE.rec = null; const b = document.getElementById('ptt'); if (b) { b.classList.remove('recording'); b.querySelector('.ptt-rec').hidden = true; } }
+async function pttFinish(R) {
+  if (R.stream) R.stream.getTracks().forEach((t) => t.stop());
+  const dur = (Date.now() - R.t0) / 1000; pttReset();
+  if (R.cancelled) { toast('ההקלטה בוטלה'); return; }
+  if (dur < 0.7 || !R.chunks.length) { toast('קצר מדי – החזק את הכפתור בזמן שאתה מדבר'); return; }
+  const blob = new Blob(R.chunks, { type: (R.mr && R.mr.mimeType) || 'audio/webm' });
+  const data = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.readAsDataURL(blob); });
+  const requestId = 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  VOICE.blobs[requestId] = URL.createObjectURL(blob);
+  const meName = (ME() && ME().name) || 'אני';
+  VOICE.list.push({ id: requestId, ts: Date.now(), fromId: LIVE.me, fromName: meName, target: VOICE.target, duration: Math.round(dur), heard: true, pending: true });
+  if (navigator.vibrate) navigator.vibrate([20, 40, 20]);
+  try {
+    const r = await api.call('voice.send', { data, mime: blob.type.split(';')[0] || 'audio/webm', duration: Math.round(dur), target: VOICE.target, recordedAt: R.t0 }, { requestId, queueable: true });
+    const m = VOICE.list.find((x) => x.id === requestId);
+    if (r && r.queued) { toast('אין קליטה – ההודעה תישלח לבד כשיחזור חיבור'); if (m) m.queued = true; }
+    else { toast('ההודעה הקולית נשלחה ל' + pttTargetLabel(VOICE.target)); if (m) { m.pending = false; if (r && r.ts) LIVE.since = Math.max(LIVE.since, r.ts); } }
+  } catch (e) { toast('השליחה נכשלה: ' + ((e && e.message) || '')); }
+  if ($('#sheet-root .voice-sheet')) actVoice();
+}
+async function voiceBlobUrl(m) {
+  if (VOICE.blobs[m.id]) return VOICE.blobs[m.id];
+  const r = await api.call('voice.get', { id: m.id }, { queueable: false });
+  const bin = atob(r.data), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return (VOICE.blobs[m.id] = URL.createObjectURL(new Blob([u8], { type: r.mime || 'audio/webm' })));
+}
+async function playVoice(m) {
+  try {
+    const url = await voiceBlobUrl(m); const au = new Audio(url); VOICE.playing = true;
+    await au.play();
+    if (!m.heard) { m.heard = true; VOICE.unheard = Math.max(0, VOICE.unheard - 1); paintPtt(); }
+    await new Promise((res) => { au.onended = res; au.onerror = res; });
+  } finally { VOICE.playing = false; }
+}
+function incomingVoice(m) {
+  VOICE.unheard++; paintPtt();
+  toast('🎙 הודעה קולית מ' + m.fromName + (m.target === 'all' ? '' : ' (לשלוחת ' + m.target + ')'), 3500);
+  if (VOICE.autoplay) { VOICE.queue.push(m); drainVoice(); }
+  if ($('#sheet-root .voice-sheet')) actVoice();
+}
+async function drainVoice() { if (VOICE.playing) return; const m = VOICE.queue.shift(); if (!m) return; try { await playVoice(m); } catch (e) { /* הדפדפן חסם השמעה אוטומטית – נשאר מסומן כלא נשמע */ } drainVoice(); }
+function actVoice() {
+  const list = VOICE.list.slice().reverse();
+  sheet(`<div class="voice-sheet"><h3>🎙 קשר – לחץ ודבר</h3>
+  <p class="muted small">מחזיקים את כפתור המיקרופון, מדברים ומשחררים. ההודעה מגיעה לכל מי שהאפליקציה פתוחה אצלו, ומושמעת אוטומטית. בלי קליטה – היא נשמרת ונשלחת כשחוזר חיבור.</p>
+  <div class="lbl">למי לשדר</div><div class="chips">${PTT_TARGETS().map(([k, l]) => `<button class="chip ${VOICE.target === k ? 'on' : ''}" data-act="ptt-target" data-v="${esc(k)}">${esc(l)}</button>`).join('')}</div>
+  <label class="tg-row" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" data-act="ptt-auto" ${VOICE.autoplay ? 'checked' : ''}> השמעה אוטומטית של הודעות נכנסות</label>
+  <div class="lbl" style="margin-top:12px">הודעות אחרונות (6 שעות)</div>
+  ${list.length ? `<ul class="voice-list">${list.map((m) => `<li class="${m.heard ? '' : 'new'}"><button class="btn btn-sec btn-s" data-act="v-play" data-id="${esc(m.id)}" aria-label="השמע">▶</button><span style="flex:1;min-width:0"><b>${esc(m.fromId === LIVE.me ? 'אני' : m.fromName)}</b> → ${esc(pttTargetLabel(m.target))}<br><small class="muted">${esc(whenLabel(m.ts))} · ${m.duration || 0} שנ׳${m.queued ? ' · ממתינה לחיבור' : m.pending ? ' · נשלחת…' : ''}</small></span></li>`).join('')}</ul>` : '<p class="muted">אין עדיין הודעות.</p>'}
+  <div class="btn-row" style="margin-top:12px"><button class="btn btn-out" data-act="sheet-close">סגור</button></div></div>`);
+  paintPtt();
+};
+
 // ───────────── sheets ─────────────
-function sheet(html) { $('#sheet-root').innerHTML = `<div class="sheet-bg" data-act="sheet-bg"><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div></div>`; const f = $('#sheet-root .sheet input:not([type=checkbox]), #sheet-root .sheet button'); if (f && f.tagName === 'INPUT') f.focus(); }
-function closeSheet() { $('#sheet-root').innerHTML = ''; UI.queue = null; }
+function sheet(html) { $('#sheet-root').innerHTML = `<div class="sheet-bg" data-act="sheet-bg"><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div></div>`; const f = $('#sheet-root .sheet input:not([type=checkbox]), #sheet-root .sheet button'); if (f && f.tagName === 'INPUT') f.focus();  try { paintPtt(); } catch (_) {} }
+function closeSheet() { $('#sheet-root').innerHTML = ''; UI.queue = null; try { paintPtt(); } catch (_) {} }
 // ───────────── install to home screen ─────────────
 let INSTALL_EVT = null;
 const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
@@ -1604,6 +1755,7 @@ function render() {
   const y = window.scrollY;
   app.innerHTML = html;
   try { syncMaanim(a === 'maanim'); } catch (_) {}
+  try { if (live()) { ensurePtt(); liveStart(); } paintPtt(); } catch (_) {}
   if (routeKey !== lastRoute) { window.scrollTo(0, 0); lastRoute = routeKey; if (a !== 'contacts') UI.ctAddDone = false; } else window.scrollTo(0, y);
   const t = $('.ab-title') || $('.hero-n'); document.title = (t ? t.textContent + ' · ' : '') + 'חוסן שלוחות';
 }
@@ -1864,6 +2016,10 @@ A['fac-pick'] = (el) => { const f = FACS[+el.dataset.i]; const R = UI.intake.res
 A['q6-copy'] = (el) => { const ev = getEv(el.dataset.ev); const q = Q6.find((x) => x.id === el.dataset.q); const v = String((ev.q6Prev || {})[q.id] || '').trim(); if (!v) return; ev.q6 = ev.q6 || {}; ev.q6[q.id] = v; addLog(ev, `בירור – ${q.q} ${v} (הועתק מאתמול)`, 'note'); save(); rerender(); };
 A['al-all'] = () => { UI.alAll = !UI.alAll; rerender(); };
 A['al-refresh'] = () => loadNews(true);
+A.pres = actPres; A.voice = actVoice;
+A['ptt-target'] = (el) => { VOICE.target = el.dataset.v; LS.set('hosen:ptt-target', VOICE.target); actVoice(); };
+A['ptt-auto'] = (el) => { VOICE.autoplay = !VOICE.autoplay; LS.set('hosen:ptt-auto', VOICE.autoplay); actVoice(); };
+A['v-play'] = async (el) => { const m = VOICE.list.find((x) => x.id === el.dataset.id); if (!m) return; el.disabled = true; try { await playVoice(m); } catch (e) { toast((e && e.message) || 'לא הצלחתי להשמיע'); } el.disabled = false; if ($('#sheet-root .voice-sheet')) actVoice(); };
 A['wk-refresh'] = () => { loadWeek(UI.weekOff || 0, true); rerender(); };
 A.wst = (el) => { const r = weekRowByNum(el.dataset.row), v = el.dataset.v; if (!r) return; UI.wst = { row: r.row, v };
   sheet(`<h3>לעדכן את הסטטוס בטבלת המעקב?</h3><p><b>${esc(r.activityName)}</b> · ${esc(r.date)} ${esc(r.hours || '')}<br><span class="muted">${esc([r.authority, r.location].filter(Boolean).join(' · '))} · שורה ${r.row} בלשונית "${esc((WEEK.cache[weekKey(UI.weekOff || 0)] || {}).tab || BR().tab)}"</span></p><p>הסטטוס ישתנה מ<b>"${esc(r.status || '—')}"</b> ל<b>"${esc(v)}"</b>.</p><div class="btn-row" style="margin-top:14px"><button class="btn ${v === 'בוטלה' ? 'btn-danger' : 'btn-pri'}" data-act="wst-ok">כן, לעדכן בטבלה</button><button class="btn btn-out" data-act="sheet-close">ביטול</button></div>`); };
