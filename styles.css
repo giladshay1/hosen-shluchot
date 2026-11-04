@@ -413,3 +413,10 @@ button.ab-act{background:none;border:0;cursor:pointer;font:inherit}
 .msay b{font-size:13px}.msay p{margin:4px 0;font-size:15px}
 .mdont{margin-top:12px;background:var(--warn-bg);color:var(--warn-ink);border:1px solid var(--warn-b);border-radius:14px;padding:12px 14px}
 .mdont h3,.h3{margin:0 0 6px;font-size:16px;display:flex;gap:6px;align-items:center}
+
+/* v1.0.7: red trash button + confirm question */
+.ab-act.ab-del{color:#fff;background:#d92d20!important;border-radius:12px;width:44px;height:44px}
+.ab-act.ab-del:active{background:#b42318!important}
+.ab-act.ab-del svg{stroke:#fff}
+.sheet .del-q{color:#b42318;display:flex;align-items:center;gap:8px}
+.sheet .del-q svg{stroke:#b42318}

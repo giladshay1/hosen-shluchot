@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.0.6';
+const APP_VERSION = '1.0.7';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -928,7 +928,7 @@ V.event = (id) => {
   const t = EVT[ev.typeId], ph = ev.phase, phObj = PHASES.find((p) => p.id === ph);
   const items = t.checklist[ph] || [];
   const closed = !!ev.closedAt;
-  return `<div class="head" style="position:sticky;top:0;z-index:20">${closed ? '' : statusBar(ev)}${appBar(shortEv(ev.typeId) + ' · ' + ev.authorities.join(', '), (ev.mode === 'ongoing' ? 'מתמשך' : 'נקודתי') + ' · נפתח ' + whenLabel(ev.startedAt) + (closed ? ' · נסגר' : ''), '#/home', `<a class="ab-act" href="#/event/${ev.id}/log" aria-label="יומן אירוע">${icon('book')}</a><button class="ab-act" data-act="del-ev" data-ev="${ev.id}" aria-label="מחיקת האירוע">${icon('trash')}</button>`)}</div>
+  return `<div class="head" style="position:sticky;top:0;z-index:20">${closed ? '' : statusBar(ev)}${appBar(shortEv(ev.typeId) + ' · ' + ev.authorities.join(', '), (ev.mode === 'ongoing' ? 'מתמשך' : 'נקודתי') + ' · נפתח ' + whenLabel(ev.startedAt) + (closed ? ' · נסגר' : ''), '#/home', `<a class="ab-act" href="#/event/${ev.id}/log" aria-label="יומן אירוע">${icon('book')}</a><button class="ab-act ab-del" data-act="del-ev" data-ev="${ev.id}" aria-label="מחיקת האירוע">${icon('trash')}</button>`)}</div>
 <main class="pad">
   ${principlesBanner()}
   ${ev.mode === 'ongoing' && !closed ? `<div class="dayrow">${icon('repeat')}<div class="row-t"><b>יום ${ev.day} לאירוע</b><span>${ev.history.length ? 'ימים קודמים נשמרו ביומן' : 'חזרה יומית על השלבים'}</span></div><button class="btn btn-sec btn-s" data-act="newday" data-ev="${ev.id}">התחל יום חדש</button></div>` : ''}
@@ -1522,7 +1522,7 @@ A.newday = (el) => {
   sheet(`<h3>${icon('repeat')} להתחיל יום ${ev.day + 1}?</h3><p class="muted">סימוני "בוצע" של היום (${Object.keys(ev.done).length}) יישמרו בהיסטוריה, והצ'קליסט יתאפס לחזרה יומית על השלבים.</p><div class="btn-row" style="margin-top:14px"><button class="btn btn-pri" data-act="newday-ok" data-ev="${ev.id}">התחל יום חדש</button><button class="btn btn-out" data-act="sheet-close">ביטול</button></div>`);
 };
 A['newday-ok'] = (el) => { const ev = getEv(el.dataset.ev); ev.history.push({ day: ev.day, date: ddmmyyyy(Date.now()), done: ev.done, q6: ev.q6 || {} }); ev.done = {}; ev.q6Prev = ev.q6 || {}; ev.q6 = {}; ev.day++; ev.phase = 'immediate'; addLog(ev, `התחיל יום ${ev.day} באירוע – הצ'קליסט היומי אופס`); save(); closeSheet(); rerender(); toast('יום ' + ev.day + ' התחיל'); };
-A['del-ev'] = (el) => { const ev = getEv(el.dataset.ev); if (!ev) return; sheet(`<h3>${icon('trash')} למחוק את האירוע?</h3><p class="muted">"${esc(evTitle(ev))}" נפתח ${esc(whenLabel(ev.startedAt))}. האירוע, הצ'קליסט והיומן שלו יימחקו מהאפליקציה ומהשרת. מתאים לאירוע שנפתח בטעות.</p><p class="muted small">אם האירוע אמיתי והסתיים – עדיף "סגור אירוע", כדי לשמור תיעוד וסיכום.</p><div class="btn-row" style="margin-top:14px"><button class="btn btn-danger" data-act="del-ok" data-ev="${ev.id}">מחק לצמיתות</button><button class="btn btn-out" data-act="sheet-close">ביטול</button></div>`); };
+A['del-ev'] = (el) => { const ev = getEv(el.dataset.ev); if (!ev) return; sheet(`<h3 class="del-q">${icon('trash')} האם אתה רוצה למחוק את האירוע?</h3><p class="muted">"${esc(evTitle(ev))}" נפתח ${esc(whenLabel(ev.startedAt))}. האירוע, הצ'קליסט והיומן שלו יימחקו מהאפליקציה ומהשרת. מתאים לאירוע שנפתח בטעות.</p><p class="muted small">אם האירוע אמיתי והסתיים – עדיף "סגור אירוע", כדי לשמור תיעוד וסיכום.</p><div class="btn-row" style="margin-top:14px"><button class="btn btn-danger" data-act="del-ok" data-ev="${ev.id}">כן, למחוק</button><button class="btn btn-out" data-act="sheet-close">לא, ביטול</button></div>`); };
 A['del-ok'] = (el) => {
   const id = el.dataset.ev, ev = getEv(id); if (!ev) return;
   S.events = S.events.filter((e) => e.id !== id);
