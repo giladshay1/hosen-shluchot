@@ -1606,7 +1606,7 @@ function ensurePtt() {
 }
 function paintPtt() {
   const b = document.getElementById('ptt'); if (!b) return;
-  const show = (live() || G.demo) && !/^#\/(maanim)/.test(location.hash) && !$('#sheet-root .sheet');
+  const show = (live() || G.demo) && !/^#\/(maanim|assess|intake)/.test(location.hash) && !$('#sheet-root .sheet');
   b.hidden = !show;
   const bd = b.querySelector('.ptt-badge'); bd.hidden = !VOICE.unheard; bd.textContent = VOICE.unheard || '';
   b.querySelector('.ptt-tg').textContent = pttTargetLabel(VOICE.target);
