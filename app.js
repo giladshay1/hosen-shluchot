@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.2.2';
+const APP_VERSION = '1.3.0';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -244,7 +244,7 @@ const api = new Api(API_URL);
 const SYNC = { online: navigator.onLine, pending: 0, failed: 0, flushing: false, err: null, needPull: false, lastPull: null, pulling: false };
 const aiAvailable = () => live() && !!G.server && G.server.mockAi === false;   // server AI only when the server says it is real
 function syncState() {
-  if (G.demo) return { cls: 'demo', label: 'מצב אורח – נתוני דוגמה', short: 'אורח' };
+  if (G.demo) return { cls: 'demo', label: 'מצב אורח', short: 'אורח' };
   const off = !navigator.onLine || SYNC.err === 'NETWORK' || SYNC.err === 'TIMEOUT';
   if (SYNC.failed) return { cls: 'fail', label: SYNC.failed + ' פעולות נכשלו', short: SYNC.failed + ' נכשלו' };
   if (off) return { cls: 'off', label: 'לא מקוון' + (SYNC.pending ? ' · ' + SYNC.pending + ' ממתינות' : ''), short: SYNC.pending ? 'לא מקוון · ' + SYNC.pending : 'לא מקוון' };
@@ -873,8 +873,8 @@ V.home = () => {
   if (live() && !WEEK.cache[weekKey(0)]) setTimeout(() => loadWeek(0, false), 0);
   const weekCount = live() && weekCountLive() !== null ? weekCountLive() : sessionsInWeek(0).filter((s) => s.status === 'תואם').length;
   return `
-<header class="hero"><div class="hero-top"><img class="hero-logo" src="${LOGOS.shieldFull}" alt=""><div style="flex:1;min-width:0"><div class="hero-k">מרכז חוסן גליל מערבי · שלום ${esc(me.first)}${me.title ? ' · ' + esc(me.title) : ''}</div><div class="hero-n">${esc(br.name)}</div></div><span class="hero-mash"><img src="${LOGOS.maashavim}" alt="משאבים"></span><span class="hero-avcol"><button class="hero-av" data-act="settings" aria-label="הגדרות ופרופיל">${esc(me.initials)}</button>${presenceSlot()}</span></div>
-<div class="hero-sync">${syncSlot(false)}</div>
+<header class="hero hero-c"><div class="hc-bar"><span class="hc-org">מרכז חוסן גליל מערבי</span><div class="hc-pill"><span class="sync-slot" data-compact="0">${syncChipInner(false)}</span><span class="hc-sep"></span>${presenceSlot()}<button class="hero-av" data-act="settings" aria-label="הגדרות ופרופיל">${esc(me.initials)}</button></div></div>
+<div class="hc-center"><div class="hc-logos"><img class="hero-logo" src="${LOGOS.shieldFull}" alt="מרכז חוסן"><span class="hero-mash"><img src="${LOGOS.maashavim}" alt="משאבים"></span></div><div class="hero-k">שלום ${esc(me.first)}${me.title ? ' · ' + esc(me.title) : ''}</div><div class="hero-n">${esc(br.name)}</div></div>
 ${me.cluster ? `<div class="br-sw" role="tablist" aria-label="בחירת שלוחה">${Object.keys(BRANCHES).map((b) => `<button role="tab" aria-selected="${b === me.branch}" class="${b === me.branch ? 'on' : ''}" data-act="set-branch" data-b="${esc(b)}">${esc(b)}</button>`).join('')}</div>` : ''}
 <div class="hero-towns">${br.authorities.map((a) => `<span>${esc(a)}</span>`).join('')}</div></header>
 <main class="pad">

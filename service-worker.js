@@ -5,7 +5,7 @@
  *   never cached. api.js keeps its own IndexedDB outbox (iOS Safari has no Background Sync).
  * Bump VERSION on every deploy so phones pick up the new files ("גרסה חדשה זמינה – לחץ לעדכון").
  */
-const VERSION = 'v1.2.2';
+const VERSION = 'v1.3.0';
 const SHELL_CACHE = 'shell-' + VERSION;
 const CONTENT_CACHE = 'content-' + VERSION;
 const FLYER_CACHE = 'flyers-rt';            // runtime cache for any other flyer opened later; survives versions
