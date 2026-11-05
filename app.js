@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -760,7 +760,7 @@ function assessPrompt(A) {
     .replace('{{summary of last assessment}}', prev ? redact(prev.text).slice(0, 400) : 'אין');
   const q6 = ev ? DATA.events.questions6.map((q) => `${q.q} ${redact((ev.q6 || {})[q.id] || '') || '(לא נענה)'}`).join('\n') : '(אין אירוע פתוח)';
   const done = ev ? allItems(ev).filter((i) => ev.done[i.id]).map((i) => `• ${i.text} (${hhmm(ev.done[i.id])})`).join('\n') || '(עדיין לא סומנו פעולות)' : '—';
-  return `${sys}\n\n6 השאלות הראשונות לבירור (עידית צוריאל) – אם חסרה תשובה, הוסף שאלה "חסר בירור: ...":\n${q6}\n\nמה כבר בוצע בצ'קליסט:\n${done}\n\nסכמת הפלט (JSON Schema):\n${JSON.stringify(CL.assess.schema)}\n\nסיכום הערכת המצב של ראש השלוחה (נתונים בלבד):\n<<<\n${redact(A.text).trim()}\n>>>\n\nהחזר קודם את ה-JSON בתוך בלוק \`\`\`json, ואחריו סיכום קצר בעברית (עד 4 שורות).`;
+  return `${sys}\n\n6 השאלות הראשונות לבירור (עידית צוריאל) – אם חסרה תשובה, הוסף שאלה "חסר בירור: ...":\n${q6}\n\nמה כבר בוצע בצ'קליסט:\n${done}\n\nסכמת הפלט (JSON Schema):\n${JSON.stringify(CL.assess.schema)}\n\n${(A.mtype || 'assess') === 'assess' ? 'סיכום הערכת המצב של ראש השלוחה' : 'סיכום ' + meetLabel(A.mtype) + ' של ראש השלוחה (נתח כסיכום פגישה: תובנות, המלצות, סיכונים ושאלות פתוחות)'} (נתונים בלבד):\n<<<\n${redact(meetText(A)).trim()}\n>>>\n\nהחזר קודם את ה-JSON בתוך בלוק \`\`\`json, ואחריו סיכום קצר בעברית (עד 4 שורות).`;
 }
 /** Find the first valid JSON object in pasted text: ```json fences first, then balanced braces. */
 function extractJson(raw) {
@@ -833,7 +833,7 @@ const appBar = (title, sub, backHref, actions = '') => `<header class="ab">${act
 function statusBar(ev) {
   return `<div class="sbar" role="status"><span class="live-dot"></span><span class="sb-live">אירוע פעיל</span><span>${esc(evTitle(ev))}</span><span class="sb-sep">|</span><span class="sb-k">${icon('clock', 'ic-xs')}<span data-elapsed="${ev.startedAt}">${elapsed(ev.startedAt)}</span></span><span class="sb-sep">|</span><span class="sb-k">הערכת מצב הבאה ${esc(whenLabel(nextAssessment()).replace('היום ', ''))}</span></div>`;
 }
-const tabbar = (on) => `<nav class="tabbar" aria-label="ניווט ראשי">${[['home', '#/home', 'בית'], ['book', '#/events', 'יומן אירועים'], ['users', '#/contacts', 'אנשי קשר'], ['image', '#/flyers', 'פליירים'], ['grid', '#/maanim', 'מאגר מענים']].map(([ic, h, l]) => `<a href="${h}" class="${on === h ? 'on' : ''}">${icon(ic)}<span>${l}</span></a>`).join('')}</nav>`;
+const tabbar = (on) => `<nav class="tabbar" aria-label="ניווט ראשי">${[['home', '#/home', 'בית'], ['book', '#/events', 'יומן אירועים'], ['users', '#/contacts', 'אנשי קשר'], ['image', '#/flyers', 'חומרי הסברה'], ['grid', '#/maanim', 'מאגר מענים']].map(([ic, h, l]) => `<a href="${h}" class="${on === h ? 'on' : ''}">${icon(ic)}<span>${l}</span></a>`).join('')}</nav>`;
 const srcLine = (codes, max = 2) => { if (!codes) return ''; const T = srcTitle(codes); return `<div class="src">${icon('file')} מקור: ${esc(T.slice(0, max).join(' · '))}${T.length > max ? ' ועוד ' + (T.length - max) : ''}</div>`; };
 function flyerThumb(f, cls = '') {
   if (f.file) return `<div class="fl-img has-img ${cls}" aria-hidden="true"><img src="${esc(f.file)}" alt="" loading="lazy" decoding="async"></div>`;
@@ -883,10 +883,10 @@ ${me.cluster ? `<div class="br-sw" role="tablist" aria-label="בחירת שלו�
   ${evs.map((e) => { const c = totalCounts(e); const ph = PHASES.find((p) => p.id === e.phase); return `<a class="active-ev" href="#/event/${e.id}"><span class="pulse"></span><span class="ae-t"><b>אירוע פעיל: ${esc(evTitle(e))}</b><span>${e.mode === 'ongoing' ? 'יום ' + e.day + ' · ' : ''}שלב ${PH_NUM[e.phase]} ${esc(ph.name)} · ${c.done}/${c.total} בוצעו</span></span>${icon('chevL')}</a>`; }).join('')}
   <div class="grid">
     <a class="tile" href="#/intake"><span class="tile-ic">${icon('msg')}</span><b>קליטת קבוצה מהודעה</b><small>הדבקה ← טבלת המעקב</small></a>
-    <a class="tile" href="#/assess"><span class="tile-ic">${icon('clip')}</span><b>הערכת מצב</b><small>סיכום ← תובנות והמלצות</small></a>
+    <a class="tile" href="#/assess"><span class="tile-ic">${icon('clip')}</span><b>סיכום פגישה</b><small>הערכת מצב · פגישה שוטפת · מוסד · איש קשר</small></a>
     <a class="tile" href="#/week"><span class="tile-ic">${icon('cal')}</span><b>השבוע שלי</b><small>${weekCount} מפגשים מתואמים השבוע</small></a>
     <a class="tile" href="#/contacts"><span class="tile-ic">${icon('phone')}</span><b>אנשי קשר</b><small>${S.contacts.length} · לפי תפקיד ורשות</small></a>
-    <a class="tile" href="#/flyers"><span class="tile-ic">${icon('image')}</span><b>פליירים</b><small>לפי מצב, קהל ושפה</small></a>
+    <a class="tile" href="#/flyers"><span class="tile-ic">${icon('image')}</span><b>חומרי הסברה</b><small>פליירים לפי מצב, קהל ושפה · פליירים של מענים</small></a>
     <a class="tile" href="#/events"><span class="tile-ic">${icon('book')}</span><b>יומן אירועים</b><small>${S.events.length} אירועים · ${S.assessments.length} הערכות</small></a>
     <a class="tile wide" href="#/alerts"><span class="tile-ic">${icon('bell')}</span><span style="flex:1"><b>מבזקי חירום</b><br><small>ynet · וואלה · i24NEWS · ערוץ 14 – לפי רשויות השלוחה</small></span>${icon('chevL')}</a>
   </div>
@@ -1219,29 +1219,37 @@ function serverErrBlock(E) {
   return `<div class="banner-demo" role="alert" style="background:var(--risk-bg);color:var(--live-ink);margin-top:12px">${icon('alert', 'ic-s')}<span><b>השרת לא כתב את השורות:</b> ${esc(E.message || E.code || 'שגיאה')}${rows.length ? `<br>${rows.slice(0, 6).map((x) => `מפגש ${(x.index || 0) + 1}: ${esc((x.errors || []).join(' · '))}`).join('<br>')}` : ''}<br>תקן בטבלת האישור ונסה שוב.</span></div>`;
 }
 
-// ---------- assessment ----------
+// ---------- assessment → סיכום פגישה ----------
+const MEET_TYPES = [['assess', 'הערכת מצב'], ['routine', 'פגישה שוטפת'], ['institution', 'פגישה עם מוסד'], ['contact', 'פגישה עם איש קשר']];
+const meetLabel = (t) => (MEET_TYPES.find(([k]) => k === (t || 'assess')) || MEET_TYPES[0])[1];
+/** Text sent to analysis: for meetings other than situation assessment, prefix the meeting context. */
+function meetText(A) { const t = A.mtype || 'assess'; if (t === 'assess') return A.text; return `סוג: ${meetLabel(t)}${A.mwith ? ' – ' + A.mwith : ''}\n${A.text}`; }
 V.assess = (q) => {
-  const A = UI.assess || (UI.assess = { eventId: q.e || (openEvents()[0] ? openEvents()[0].id : ''), text: '', time: '', res: null, saved: null });
+  const A = UI.assess || (UI.assess = { eventId: q.e || (openEvents()[0] ? openEvents()[0].id : ''), text: '', time: '', res: null, saved: null, mtype: 'assess', mwith: '' });
   if (q.e && A.eventId !== q.e && !A.text) A.eventId = q.e;
+  if (q.e && !A.text) A.mtype = 'assess';
   const ev = A.eventId ? getEv(A.eventId) : null;
   if (!A.time) A.time = ev ? toLocalInput(ev.startedAt) : '';
   const hasSpeech = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
   const R = A.res;
-  return `${ev && !ev.closedAt ? `<div class="head" style="position:sticky;top:0;z-index:20">${statusBar(ev)}` : '<div class="head" style="position:sticky;top:0;z-index:20">'}${appBar('הערכת מצב', ev ? evTitle(ev) + (ev.mode === 'ongoing' ? ' · יום ' + ev.day : '') : 'ללא אירוע פעיל', ev ? '#/event/' + ev.id : '#/home')}</div>
+  return `${ev && !ev.closedAt ? `<div class="head" style="position:sticky;top:0;z-index:20">${statusBar(ev)}` : '<div class="head" style="position:sticky;top:0;z-index:20">'}${appBar('סיכום פגישה', A.mtype && A.mtype !== 'assess' ? meetLabel(A.mtype) + (A.mwith ? ' · ' + A.mwith : '') : ev ? evTitle(ev) + (ev.mode === 'ongoing' ? ' · יום ' + ev.day : '') : 'ללא אירוע פעיל', ev ? '#/event/' + ev.id : '#/home')}</div>
 <main class="pad">
-  <label class="lbl" for="asev">אירוע</label>
+  <div class="lbl">סוג הפגישה</div>
+  <div class="chips">${MEET_TYPES.map(([k, l]) => `<button class="chip s ${(A.mtype || 'assess') === k ? 'on' : ''}" data-act="as-type" data-v="${k}">${esc(l)}</button>`).join('')}</div>
+  ${(A.mtype === 'institution' || A.mtype === 'contact') ? `<label class="lbl" for="aswith">${A.mtype === 'institution' ? 'שם המוסד' : 'עם מי הפגישה'}</label><input class="inp" id="aswith" data-in="as-with" value="${esc(A.mwith || '')}" placeholder="${A.mtype === 'institution' ? 'לדוגמה: בי״ס יסודי אורט, עכו' : 'שם ותפקיד'}" ${A.mtype === 'contact' ? 'list="as-ct"' : ''}>${A.mtype === 'contact' ? `<datalist id="as-ct">${S.contacts.map((c) => `<option value="${esc(c.name + (c.role ? ' – ' + roleName(c.role) : ''))}">`).join('')}</datalist>` : ''}` : ''}
+  <label class="lbl" for="asev">אירוע${(A.mtype || 'assess') === 'assess' ? '' : ' <span class="muted">(לא חובה)</span>'}</label>
   <select class="sel" id="asev" data-in="as-ev"><option value="">ללא אירוע</option>${S.events.map((e) => `<option value="${e.id}" ${e.id === A.eventId ? 'selected' : ''}>${esc(evTitle(e))}${e.closedAt ? ' (נסגר)' : ''}</option>`).join('')}</select>
-  <label class="lbl" for="astime">מתי קרה האירוע? <span class="muted">קובע את כללי העיתוי</span></label>
+  <label class="lbl" for="astime">${(A.mtype || 'assess') === 'assess' ? 'מתי קרה האירוע? <span class="muted">קובע את כללי העיתוי</span>' : 'מתי הייתה הפגישה?'}</label>
   <input class="inp" id="astime" type="datetime-local" data-in="as-time" value="${esc(A.time)}">
   ${ev ? `<div class="card" style="margin-top:12px"><b>${icon('list', 'ic-s')} 6 השאלות הראשונות · ${q6Answered(ev)}/6</b>${q6Lines(ev).length ? `<div class="muted" style="white-space:pre-line;margin-top:4px">${esc(q6Lines(ev).join('\n'))}</div>` : '<p class="muted">עוד לא נענו.</p>'}<a class="lnk" href="#/event/${ev.id}">ענה בצ'קליסט (שלב 01)</a><p class="muted small">התשובות נכנסות לניתוח.</p></div>` : ''}
-  <label class="lbl" for="astext">סיכום (הקלדה או הכתבה)</label>
+  <label class="lbl" for="astext">סיכום הפגישה (הקלדה או הכתבה)</label>
   <textarea class="ta" id="astext" data-in="as-text" rows="7" placeholder="מה קרה, מה ראית, עם מי דיברת, מה ביקשו ממך…">${esc(A.text)}</textarea>
   <div class="btn-row" style="margin-top:8px">${hasSpeech ? `<button class="btn btn-out mic ${UI.rec ? 'on' : ''}" data-act="as-mic">${icon('mic', 'ic-s')} ${UI.rec ? 'עצור הכתבה' : 'הכתבה'}</button>` : `<span class="muted small" style="align-self:center">הכתבה: השתמש במיקרופון של המקלדת</span>`}<button class="btn btn-out" data-act="as-sample">דוגמה</button><button class="btn btn-pri" data-act="as-run" ${A.text.trim() ? '' : 'disabled'}>נתח</button></div>
   <p class="muted small" style="margin-top:6px">"נתח" = ניתוח אוטומטי בסיסי, על הטלפון.</p>
   <div class="btn-row" style="margin-top:8px">${claudeBtn('as')}${aiAvailable() ? `<button class="btn btn-sec" data-act="as-ai" ${A.aiBusy ? 'disabled' : ''}>${icon('bulb', 'ic-s')} ${A.aiBusy ? 'מנתח…' : 'ניתוח AI בשרת'}</button>` : ''}</div>${privacyLine}
   ${A.claude ? claudePanel('as', A.claude) : ''}
   ${R ? assessResult(R, A) : ''}
-  ${S.assessments.length ? `<div class="sec">היסטוריית הערכות</div><ul class="list">${S.assessments.slice().reverse().slice(0, 6).map((a) => `<li><button class="row" style="width:100%;text-align:right" data-act="as-open" data-id="${a.id}"><span class="av">${icon('clip', 'ic-s')}</span><span class="row-t"><b>${esc(a.text.slice(0, 50))}${a.text.length > 50 ? '…' : ''}</b><span>${whenLabel(a.t)} · ${a.result.recs.length} המלצות${a.result.by === 'claude' ? ' · <span class="tag claude">נותח ע"י Claude</span>' : ''}</span></span></button></li>`).join('')}</ul>` : ''}
+  ${S.assessments.length ? `<div class="sec">סיכומים קודמים</div><ul class="list">${S.assessments.slice().reverse().slice(0, 6).map((a) => `<li><button class="row" style="width:100%;text-align:right" data-act="as-open" data-id="${a.id}"><span class="av">${icon('clip', 'ic-s')}</span><span class="row-t"><b>${esc(a.text.slice(0, 50))}${a.text.length > 50 ? '…' : ''}</b><span>${esc(meetLabel(a.mtype))}${a.mwith ? ' · ' + esc(a.mwith) : ''} · ${whenLabel(a.t)} · ${a.result.recs.length} המלצות${a.result.by === 'claude' ? ' · <span class="tag claude">נותח ע"י Claude</span>' : ''}</span></span></button></li>`).join('')}</ul>` : ''}
 </main>`;
 };
 function assessResult(R, A) {
@@ -1399,12 +1407,16 @@ function parseVcf(text) {
 }
 
 // ---------- flyers ----------
+/** פליירים של מענים = חוברות מענים, נהלים ותכניות שאפשר להציע (קטגוריית הדרייב "מענים", חוברות svc_, או kind: maanim בנתונים). */
+const isMaanimFlyer = (f) => f.kind === 'maanim' || /מענים/.test(f.category || '') || /^svc_/.test(f.id);
 V.flyers = () => {
-  const F = UI.fl, all = DATA.flyers.flyers;
+  const F = UI.fl, all0 = DATA.flyers.flyers;
+  const all = F.cat === 'maanim' ? all0.filter(isMaanimFlyer) : F.cat === 'hasbara' ? all0.filter((f) => !isMaanimFlyer(f)) : all0;
   const auds = [...new Set(all.map((f) => f.audience))].sort((a, b) => a.localeCompare(b, 'he'));
   const list = all.filter((f) => (!F.sit || (f.situations || []).includes(F.sit)) && (!F.lang || f.languages.includes(F.lang)) && (!F.aud || f.audience === F.aud) && (!F.q || (f.title + ' ' + f.audience + ' ' + (f.notes || '')).includes(F.q)));
-  return `${appBar('ספריית פליירים', 'חומרי ההסברה של משאבים · ' + all.length, '#/home')}
+  return `${appBar('חומרי הסברה', 'של משאבים · ' + all.length + ' פריטים', '#/home')}
 <main class="pad">
+  <div class="seg-cat">${[['', 'הכול', all0.length], ['hasbara', 'חומרי הסברה', all0.filter((f) => !isMaanimFlyer(f)).length], ['maanim', 'פליירים של מענים', all0.filter(isMaanimFlyer).length]].map(([k, l, n]) => `<button class="${(F.cat || '') === k ? 'on' : ''}" data-act="fl-cat" data-v="${k}">${esc(l)} <small>${n}</small></button>`).join('')}</div>
   <input class="inp" type="search" placeholder="חיפוש פלייר" data-in="fl-q" value="${esc(F.q)}" aria-label="חיפוש פלייר">
   <div class="lbl">מצב</div>
   <div class="hscroll"><button class="chip s ${!F.sit ? 'on' : ''}" data-act="fl-sit" data-v="">הכול</button>${Object.entries(DATA.flyers.situationValues).map(([k, v]) => `<button class="chip s ${F.sit === k ? 'on' : ''}" data-act="fl-sit" data-v="${k}">${esc(v)}</button>`).join('')}</div>
@@ -1911,11 +1923,11 @@ A['in-ai'] = async () => {
 A['as-sample'] = () => { const Aa = UI.assess; Aa.text = SAMPLE_ASSESS; if (!Aa.time) { Aa.time = toLocalInput(Date.now() - 26 * 36e5); } rerender(); };
 A['as-run'] = () => {
   const Aa = UI.assess; const ev = Aa.eventId ? getEv(Aa.eventId) : null; const et = Aa.time ? new Date(Aa.time).getTime() : null;
-  const res = analyze(Aa.text, { eventTime: et && !isNaN(et) ? et : null, closed: ev && !!ev.closedAt, type: ev && ev.typeId, q6: ev ? ev.q6 : null });
+  const res = analyze(meetText(Aa), { eventTime: et && !isNaN(et) ? et : null, closed: ev && !!ev.closedAt, type: ev && ev.typeId, q6: ev ? ev.q6 : null });
   Aa.res = res;
-  const rec = { id: uid(), eventId: Aa.eventId || null, t: Date.now(), text: Aa.text, eventTime: et, result: res };
+  const rec = { id: uid(), eventId: Aa.eventId || null, t: Date.now(), text: Aa.text, eventTime: et, result: res, mtype: Aa.mtype || 'assess', mwith: Aa.mwith || '' };
   S.assessments.push(rec); Aa.saved = rec.id; assessSync(rec);
-  if (ev) addLog(ev, `הערכת מצב נשמרה: ${res.insights.length} תובנות, ${res.recs.length} המלצות`);
+  if (ev) addLog(ev, `${meetLabel(Aa.mtype)} נשמר/ה: ${res.insights.length} תובנות, ${res.recs.length} המלצות`);
   save(); rerender(); setTimeout(() => { const r = $('#as-res'); if (r) r.scrollIntoView({ block: 'start' }); }, 0);
 };
 function assessSync(rec) {
@@ -1940,18 +1952,18 @@ A['as-ai'] = async () => {
   const Aa = UI.assess; if (!Aa.text.trim()) { toast('כתוב קודם סיכום'); return; }
   Aa.aiBusy = true; rerender();
   try {
-    const r = await api.call('ai.analyzeAssessment', { summary: Aa.text, event_id: Aa.eventId || undefined }, { queueable: false });
+    const r = await api.call('ai.analyzeAssessment', { summary: meetText(Aa), event_id: Aa.eventId || undefined }, { queueable: false });
     const res = assessFromServer(r && r.result); if (!res) throw new Error('תשובה לא צפויה מהשרת');
     const ev = Aa.eventId ? getEv(Aa.eventId) : null; const et = Aa.time ? new Date(Aa.time).getTime() : null;
-    const rec = { id: uid(), eventId: Aa.eventId || null, t: Date.now(), text: Aa.text, eventTime: et, result: res, serverId: r.assessmentId };
+    const rec = { id: uid(), eventId: Aa.eventId || null, t: Date.now(), text: Aa.text, eventTime: et, result: res, serverId: r.assessmentId, mtype: Aa.mtype || 'assess', mwith: Aa.mwith || '' };
     S.assessments.push(rec); Aa.res = res; Aa.saved = rec.id;
-    if (ev) addLog(ev, `הערכת מצב (AI בשרת) נשמרה: ${res.insights.length} תובנות, ${res.recs.length} המלצות`);
+    if (ev) addLog(ev, `${meetLabel(Aa.mtype)} (AI בשרת) נשמר/ה: ${res.insights.length} תובנות, ${res.recs.length} המלצות`);
     save();
   } catch (e) { toast('ניתוח AI נכשל: ' + (e.message || '') + ' – אפשר "נתח" או "נתח עם Claude"', 4000); }
   finally { Aa.aiBusy = false; rerender(); setTimeout(() => { const x = $('#as-res'); if (x) x.scrollIntoView({ block: 'start' }); }, 0); }
 };
 A['as-copy'] = async () => { toast((await copyText(assessText(UI.assess.res))) ? 'ההמלצות הועתקו' : 'לא ניתן להעתיק'); };
-A['as-open'] = (el) => { const a = S.assessments.find((x) => x.id === el.dataset.id); if (!a) return; sheet(`<h3>${icon('clip')} הערכת מצב · ${whenLabel(a.t)}</h3><div class="out" style="margin-bottom:10px">${esc(a.text)}</div>${assessResult(a.result, { saved: a.id, eventId: a.eventId }).replace('data-act="as-copy"', 'data-act="as-copy-h" data-id="' + a.id + '"')}<button class="btn btn-out" style="width:100%;margin-top:10px" data-act="sheet-close">סגור</button>`); };
+A['as-open'] = (el) => { const a = S.assessments.find((x) => x.id === el.dataset.id); if (!a) return; sheet(`<h3>${icon('clip')} ${esc(meetLabel(a.mtype))}${a.mwith ? ' · ' + esc(a.mwith) : ''} · ${whenLabel(a.t)}</h3><div class="out" style="margin-bottom:10px">${esc(a.text)}</div>${assessResult(a.result, { saved: a.id, eventId: a.eventId }).replace('data-act="as-copy"', 'data-act="as-copy-h" data-id="' + a.id + '"')}<button class="btn btn-out" style="width:100%;margin-top:10px" data-act="sheet-close">סגור</button>`); };
 A['as-copy-h'] = async (el) => { const a = S.assessments.find((x) => x.id === el.dataset.id); toast((await copyText(assessText(a.result))) ? 'ההמלצות הועתקו' : 'לא ניתן להעתיק'); };
 A['as-mic'] = () => {
   if (UI.rec) { try { UI.rec.stop(); } catch (e) { /* ignore */ } UI.rec = null; rerender(); return; }
@@ -2018,9 +2030,9 @@ A['cl-load'] = (el) => {
   } else {
     const res = assessFromClaude(ex.obj, ex.rest); if (!res) return bad();
     const ev = h.eventId ? getEv(h.eventId) : null; const et = h.time ? new Date(h.time).getTime() : null;
-    const rec = { id: uid(), eventId: h.eventId || null, t: Date.now(), text: h.text, eventTime: et, result: res };
+    const rec = { id: uid(), eventId: h.eventId || null, t: Date.now(), text: h.text, eventTime: et, result: res, mtype: h.mtype || 'assess', mwith: h.mwith || '' };
     S.assessments.push(rec); h.res = res; h.saved = rec.id; h.claude = null; assessSync(rec);
-    if (ev) addLog(ev, `הערכת מצב (נותח ע"י Claude) נשמרה: ${res.insights.length} תובנות, ${res.recs.length} המלצות`);
+    if (ev) addLog(ev, `${meetLabel(h.mtype)} (נותח ע"י Claude) נשמר/ה: ${res.insights.length} תובנות, ${res.recs.length} המלצות`);
     save(); rerender(); toast('התוצאה של Claude נטענה ונשמרה');
     setTimeout(() => { const r = $('#as-res'); if (r) r.scrollIntoView({ block: 'start' }); }, 0);
   }
@@ -2030,6 +2042,8 @@ A['fac-pick'] = (el) => { const f = FACS[+el.dataset.i]; const R = UI.intake.res
 A['q6-copy'] = (el) => { const ev = getEv(el.dataset.ev); const q = Q6.find((x) => x.id === el.dataset.q); const v = String((ev.q6Prev || {})[q.id] || '').trim(); if (!v) return; ev.q6 = ev.q6 || {}; ev.q6[q.id] = v; addLog(ev, `בירור – ${q.q} ${v} (הועתק מאתמול)`, 'note'); save(); rerender(); };
 A['al-all'] = () => { UI.alAll = !UI.alAll; rerender(); };
 A['al-refresh'] = () => loadNews(true);
+A['fl-cat'] = (el) => { UI.fl.cat = el.dataset.v; rerender(); };
+A['as-type'] = (el) => { const Aa = UI.assess; Aa.mtype = el.dataset.v; if (Aa.mtype !== 'institution' && Aa.mtype !== 'contact') Aa.mwith = ''; rerender(); };
 A.pres = actPres; A.voice = actVoice;
 A['ptt-target'] = (el) => { VOICE.target = el.dataset.v; LS.set('hosen:ptt-target', VOICE.target); actVoice(); };
 A['ptt-auto'] = (el) => { VOICE.autoplay = !VOICE.autoplay; LS.set('hosen:ptt-auto', VOICE.autoplay); actVoice(); };
@@ -2110,6 +2124,7 @@ const IN = {
   'in-f': (el) => { const R = UI.intake.res; R.F[el.dataset.k] = el.value; R.flag[el.dataset.k] = 'ok'; el.closest('.f').classList.remove('warn'); if (['hours', 'authority', 'settlement'].includes(el.dataset.k) && el.tagName === 'SELECT') rerender(); },
   'as-ev': (el) => { const Aa = UI.assess; Aa.eventId = el.value; const ev = getEv(el.value); Aa.time = ev ? toLocalInput(ev.startedAt) : ''; rerender(); },
   'as-time': (el) => { UI.assess.time = el.value; },
+  'as-with': (el) => { UI.assess.mwith = el.value; },
   'as-text': (el) => { UI.assess.text = el.value; const b = document.querySelector('[data-act="as-run"]'); if (b) b.disabled = !el.value.trim(); },
   'ct-q': (el) => { UI.ct.q = el.value; clearTimeout(IN._t); IN._t = setTimeout(() => { rerender(); const i = document.querySelector('[data-in="ct-q"]'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); },
   'fl-q': (el) => { UI.fl.q = el.value; clearTimeout(IN._t); IN._t = setTimeout(() => { rerender(); const i = document.querySelector('[data-in="fl-q"]'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); },
