@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.5.1';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -888,8 +888,8 @@ ${me.cluster ? `<div class="br-sw" role="tablist" aria-label="בחירת שלו�
     <a class="tile" href="#/contacts"><span class="tile-ic">${icon('phone')}</span><b>אנשי קשר</b><small>${S.contacts.length} · לפי תפקיד ורשות</small></a>
     <a class="tile" href="#/flyers"><span class="tile-ic">${icon('image')}</span><b>חומרי הסברה</b><small>פליירים לפי מצב, קהל ושפה · פליירים של מענים</small></a>
     <a class="tile" href="#/events"><span class="tile-ic">${icon('book')}</span><b>יומן אירועים</b><small>${S.events.length} אירועים · ${S.assessments.length} סיכומים</small></a>
-    <a class="tile wide" href="#/docs"><span class="tile-ic">${icon('file')}</span><span style="flex:1"><b>נהלי עבודה</b><br><small>תפקיד הרכז בחירום · אירוע חריג · נהלי מענים · לקחים</small></span>${icon('chevL')}</a>
-    <a class="tile wide" href="#/alerts"><span class="tile-ic">${icon('bell')}</span><span style="flex:1"><b>מבזקי חירום</b><br><small>ynet · וואלה · i24NEWS · ערוץ 14 – לפי רשויות השלוחה</small></span>${icon('chevL')}</a>
+    <a class="tile" href="#/docs"><span class="tile-ic">${icon('file')}</span><b>נהלי עבודה</b><small>חירום · אירוע חריג · מענים</small></a>
+    <a class="tile" href="#/alerts"><span class="tile-ic">${icon('bell')}</span><b>מבזקי חירום</b><small>חדשות לפי רשויות השלוחה</small></a>
   </div>
   ${rems.length ? `<div class="sec"><span>${icon('bell', 'ic-s')} תזכורות קרובות</span></div>${rems.map((r) => remRow(r, r.ev)).join('')}` : ''}
   ${G.demo ? `<div class="sec"><span class="demo-badge">${icon('info', 'ic-xs')} מצב הדגמה – נתוני דמה, נשמרים רק בטלפון הזה ולא נשלחים לשרת</span></div>` : G.server && G.server.dryRun ? `<div class="sec"><span class="demo-badge">${icon('info', 'ic-xs')} השרת במצב בדיקה: קליטת קבוצות לא נכתבת לטבלת המעקב</span></div>` : ''}
