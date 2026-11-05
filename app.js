@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -887,7 +887,8 @@ ${me.cluster ? `<div class="br-sw" role="tablist" aria-label="בחירת שלו�
     <a class="tile" href="#/week"><span class="tile-ic">${icon('cal')}</span><b>השבוע שלי</b><small>${weekCount} מפגשים מתואמים השבוע</small></a>
     <a class="tile" href="#/contacts"><span class="tile-ic">${icon('phone')}</span><b>אנשי קשר</b><small>${S.contacts.length} · לפי תפקיד ורשות</small></a>
     <a class="tile" href="#/flyers"><span class="tile-ic">${icon('image')}</span><b>חומרי הסברה</b><small>פליירים לפי מצב, קהל ושפה · פליירים של מענים</small></a>
-    <a class="tile" href="#/events"><span class="tile-ic">${icon('book')}</span><b>יומן אירועים</b><small>${S.events.length} אירועים · ${S.assessments.length} הערכות</small></a>
+    <a class="tile" href="#/events"><span class="tile-ic">${icon('book')}</span><b>יומן אירועים</b><small>${S.events.length} אירועים · ${S.assessments.length} סיכומים</small></a>
+    <a class="tile wide" href="#/docs"><span class="tile-ic">${icon('file')}</span><span style="flex:1"><b>נהלי עבודה</b><br><small>תפקיד הרכז בחירום · אירוע חריג · נהלי מענים · לקחים</small></span>${icon('chevL')}</a>
     <a class="tile wide" href="#/alerts"><span class="tile-ic">${icon('bell')}</span><span style="flex:1"><b>מבזקי חירום</b><br><small>ynet · וואלה · i24NEWS · ערוץ 14 – לפי רשויות השלוחה</small></span>${icon('chevL')}</a>
   </div>
   ${rems.length ? `<div class="sec"><span>${icon('bell', 'ic-s')} תזכורות קרובות</span></div>${rems.map((r) => remRow(r, r.ev)).join('')}` : ''}
@@ -946,6 +947,7 @@ V.event = (id) => {
   <div class="btn-row" style="margin-top:16px">
     <a class="btn btn-out" href="#/assess?e=${ev.id}">${icon('clip', 'ic-s')} הערכת מצב</a>
     <a class="btn btn-out" href="#/event/${ev.id}/log">${icon('book', 'ic-s')} יומן אירוע</a>
+    <a class="btn btn-out" href="#/docs">${icon('file', 'ic-s')} נהלי עבודה</a>
   </div>
 </main>
 <div class="bottom"><div class="btn-row"><a class="btn btn-pri" style="flex:2" href="#/event/${ev.id}/report">${icon('send', 'ic-s')} דיווח למנהלת המרכז</a>${closed ? `<a class="btn btn-sec" href="#/event/${ev.id}/summary">סיכום</a>` : `<button class="btn btn-sec" data-act="close-ev" data-ev="${ev.id}">סגור אירוע</button>`}</div></div>`;
@@ -1699,6 +1701,33 @@ function actVoice() {
   paintPtt();
 };
 
+// ---------- נהלי עבודה (docs.list – הרשימה והקישורים מגיעים מהשרת, רק למשתמשים מחוברים) ----------
+const DOCS = { data: LS.get('hosen:docs') || null, loading: false, err: null, at: 0 };
+const DOCS_DEMO = [{ group: 'חירום – תפקיד ותפיסת עבודה', items: [{ title: 'הרכזים בחירום – שאגת הארי', type: 'pdf', desc: 'מה עושה רכז השלוחה בחירום, שלב אחר שלב' }, { title: 'התנהלות צוות מרכזי החוסן בזמן חירום', type: 'docx', desc: 'נוהל עבודת הצוות באירוע חירום' }] }, { group: 'אירוע חריג', items: [{ title: 'נוהל תפעול ודיווח אירוע חריג', type: 'docx', desc: 'מתי ואיך מדווחים על אירוע חריג' }, { title: 'דוח אירוע חריג (טופס)', type: 'docx', desc: 'הטופס למילוי ולשליחה' }] }, { group: 'נהלי מענים', items: [{ title: 'נוהל חרדה', type: 'drive', desc: 'טיפול קצר מועד ללא עלות' }] }];
+async function loadDocs() {
+  if (!live() || DOCS.loading) return; DOCS.loading = true; DOCS.err = null;
+  try { const r = await api.call('docs.list', {}, { queueable: false }); if (r && Array.isArray(r.groups)) { DOCS.data = r; DOCS.at = Date.now(); LS.set('hosen:docs', r); } }
+  catch (e) { DOCS.err = (e && e.message) || 'שגיאה'; DOCS.at = Date.now(); }
+  DOCS.loading = false; if (location.hash.startsWith('#/docs')) rerender();
+}
+const DOC_ICON = { pdf: 'PDF', docx: 'Word', pptx: 'מצגת', drive: 'תיקייה/מסמך' };
+V.docs = () => {
+  const demo = !live();
+  if (!demo && (!DOCS.at || Date.now() - DOCS.at > 10 * 60000)) setTimeout(loadDocs, 0);
+  const groups = demo ? DOCS_DEMO : (DOCS.data ? DOCS.data.groups : []);
+  const q = (UI.docQ || '').trim();
+  const filt = groups.map((g) => ({ ...g, items: g.items.filter((d) => !q || (d.title + ' ' + d.desc).includes(q)) })).filter((g) => g.items.length);
+  return `${appBar('נהלי עבודה', 'נהלים, טפסים ולקחים · מרכז החוסן', '#/home')}
+<main class="pad">
+  ${demo ? `<div class="banner-demo">${icon('info', 'ic-s')}<span><b>מצב אורח:</b> מוצגת רשימה לדוגמה. אחרי כניסה רואים את כל הנהלים ופותחים אותם.</span></div>` : ''}
+  <input class="inp" type="search" placeholder="חיפוש נוהל" data-in="doc-q" value="${esc(UI.docQ || '')}" aria-label="חיפוש נוהל">
+  ${DOCS.err && !demo && !DOCS.data ? `<div class="banner-demo">${icon('info', 'ic-s')}<span>לא הצלחתי לטעון את הרשימה (${esc(DOCS.err)}).</span></div>` : ''}
+  ${!demo && !DOCS.data && DOCS.loading ? '<p class="muted">טוען…</p>' : ''}
+  ${filt.map((g) => `<div class="lbl" style="margin-top:14px">${esc(g.group)}</div><ul class="doc-list">${g.items.map((d) => `<li>${d.url ? `<a class="doc-row" href="${esc(d.url)}" target="_blank" rel="noopener">` : '<div class="doc-row">'}<span class="doc-ic">${icon('file')}</span><span style="flex:1;min-width:0"><b>${esc(d.title)}</b><small class="muted">${esc(d.desc || '')}</small></span><span class="tag">${esc(DOC_ICON[d.type] || '')}</span>${d.url ? '</a>' : '</div>'}</li>`).join('')}</ul>`).join('')}
+  ${q && !filt.length ? '<div class="empty">לא נמצא נוהל מתאים.</div>' : ''}
+  ${!demo && DOCS.data && DOCS.data.folder ? `<a class="btn btn-out" style="width:100%;margin-top:14px" href="${esc(DOCS.data.folder)}" target="_blank" rel="noopener">${icon('share', 'ic-s')} פתח את תיקיית הנהלים בדרייב</a><p class="muted small" style="margin-top:6px">המסמכים נפתחים בגוגל דרייב, לפי הרשאות התיקייה.</p>` : ''}
+</main>${tabbar('')}`;
+};
 // ───────────── sheets ─────────────
 function sheet(html) { $('#sheet-root').innerHTML = `<div class="sheet-bg" data-act="sheet-bg"><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div></div>`; const f = $('#sheet-root .sheet input:not([type=checkbox]), #sheet-root .sheet button'); if (f && f.tagName === 'INPUT') f.focus();  try { paintPtt(); } catch (_) {} }
 function closeSheet() { $('#sheet-root').innerHTML = ''; UI.queue = null; try { paintPtt(); } catch (_) {} }
@@ -1776,6 +1805,7 @@ function render() {
     case 'alerts': html = V.alerts(); break;
     case 'maase': html = V.maase(q); break;
     case 'maanim': html = V.maanim(b); break;
+    case 'docs': html = V.docs(); break;
     default: html = V.notFound();
   }
   const y = window.scrollY;
@@ -2125,6 +2155,7 @@ const IN = {
   'as-ev': (el) => { const Aa = UI.assess; Aa.eventId = el.value; const ev = getEv(el.value); Aa.time = ev ? toLocalInput(ev.startedAt) : ''; rerender(); },
   'as-time': (el) => { UI.assess.time = el.value; },
   'as-with': (el) => { UI.assess.mwith = el.value; },
+  'doc-q': (el) => { UI.docQ = el.value; const p = el.selectionStart; rerender(); const n = document.querySelector('[data-in="doc-q"]'); if (n) { n.focus(); try { n.setSelectionRange(p, p); } catch (_) {} } },
   'as-text': (el) => { UI.assess.text = el.value; const b = document.querySelector('[data-act="as-run"]'); if (b) b.disabled = !el.value.trim(); },
   'ct-q': (el) => { UI.ct.q = el.value; clearTimeout(IN._t); IN._t = setTimeout(() => { rerender(); const i = document.querySelector('[data-in="ct-q"]'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); },
   'fl-q': (el) => { UI.fl.q = el.value; clearTimeout(IN._t); IN._t = setTimeout(() => { rerender(); const i = document.querySelector('[data-in="fl-q"]'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); },

@@ -499,3 +499,9 @@ button.ab-act{background:none;border:0;cursor:pointer;font:inherit}
 .seg-cat button{flex:1;min-height:40px;border-radius:10px;border:0;background:transparent;font:inherit;font-weight:600;font-size:14px;color:var(--ink);cursor:pointer}
 .seg-cat button.on{background:var(--surface);box-shadow:0 1px 4px rgba(0,0,0,.12);color:var(--pri)}
 .seg-cat small{opacity:.6;font-weight:500}
+
+/* v1.5.0: נהלי עבודה */
+.doc-list{list-style:none;padding:0;margin:6px 0 0;display:flex;flex-direction:column;gap:8px}
+.doc-row{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);text-decoration:none}
+.doc-row b{display:block;line-height:1.3}.doc-row small{display:block;margin-top:2px}
+.doc-ic{width:38px;height:38px;border-radius:10px;background:#E6F2F1;display:grid;place-items:center;flex:none;color:var(--teal)}

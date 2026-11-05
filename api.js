@@ -21,7 +21,7 @@ const DB_NAME = 'hosen-app';
 const DB_VERSION = 1;
 let SEQ = 0;   // tie-breaker for writes queued in the same millisecond
 const QUEUEABLE = new Set(['events.create', 'events.setStep', 'events.close', 'events.delete', 'contacts.upsert', 'contacts.delete', 'log', 'sessions.add', 'voice.send']);
-const CACHEABLE = new Set(['config', 'sessions.recent', 'contacts.list', 'events.list', 'events.get', 'flyers.list']);
+const CACHEABLE = new Set(['config', 'docs.list', 'sessions.recent', 'contacts.list', 'events.list', 'events.get', 'flyers.list']);
 
 function uuid() {
   return (crypto.randomUUID ? crypto.randomUUID()
