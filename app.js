@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.6.1';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -311,6 +311,13 @@ function setFacilitators(list) {
   FACS.length = 0; mapped.forEach((f) => FACS.push({ ...f, weak: isWeakFac(f.n), k: nrm(f.n) }));
   FACS.forEach((f) => { if (f.h) KNOWN_PLACES.add(nrm(f.h)); });
 }
+// activity names: the real tracking sheet (server "activities.list", by frequency); bundled snapshot until it arrives
+const ACT_SEED = ['משחקי אדמה', 'חוסן בעזרת בע"ח', 'כלי חוסן - כללי', 'לונה סרף', 'צעדים', 'פוטותרפיה', 'ליצנות רפואית', 'חוסן בתנועה', 'גילוף בעץ', 'גינון טיפולי', 'בובותרפיה', 'זיקנה ב 6 ערוצים', 'סדנת צחוק', 'פלייבק', 'הורות ב 6 ערוצים', 'חוסן באומנות', 'גשר מאחד', 'כן בריבוע', 'בית בלב', 'סאפ חותרים למטרה', 'דרמה תרפיה', 'חוסן בשישה ערוצים', 'מוזיאון על גלגלים', 'בשורה מרה', 'ODT', 'קלפים טיפוליים', 'כתיבה יוצרת', 'התערבות בחירום סיוע נפשי ראשוני', 'צח"י', 'נאמני חוסן', 'מעגלי שיח', 'קוקודמה', 'יוגה טיפולית', 'התיק של כרמל', 'חמלה עצמית', 'מודל מעש"ה', 'מי יציל את המציל', 'הדרכת הורים', 'אחר'];
+let ACT_LIST = (() => { const c = LS.get('hosen:act'); return Array.isArray(c) && c.length ? c : ACT_SEED; })();
+async function loadActivities() {
+  if (!live()) return;
+  try { const r = arrOf(await api.call('activities.list', {}, { queueable: false })); if (r && r.length) { ACT_LIST = r.map((x) => String(x.name || x).trim()).filter(Boolean); if (!ACT_LIST.includes('אחר')) ACT_LIST.push('אחר'); else { ACT_LIST = ACT_LIST.filter((x) => x !== 'אחר').concat('אחר'); } LS.set('hosen:act', ACT_LIST); } } catch (e) { /* keep cached / bundled list */ }
+}
 async function loadFacilitators() {
   if (!live()) return;
   try { const r = arrOf(await api.call('getFacilitators', {}, { queueable: false })); if (r && r.length) { setFacilitators(r); LS.set('hosen:fac', r); } } catch (e) { /* keep cached / bundled list */ }
@@ -365,7 +372,7 @@ async function pullAll() {
     SYNC.err = e.code || 'ERR';
   } finally { SYNC.pulling = false; paintSync(); if (stale()) setTimeout(pullAll, 0); }
   if (stale()) return;
-  loadFacilitators();
+  loadFacilitators(); loadActivities();
 }
 async function refreshServerInfo() {
   if (G.demo || !navigator.onLine) return;
@@ -602,7 +609,7 @@ function parseIntake(raw, user) {
   if (lm) { let name = lm[2]; if (lm[3] && !/^[בלמו]/.test(lm[3]) && !br.authorities.includes(lm[3])) name += ' ' + lm[3]; let inst = (lm[1] + ' ' + name).replace(/\s+/g, ' '); set('location', inst + (sett ? ', ' + sett : '')); }
   else set('location', '', 'missing');
   // activity
-  const act = ACTIVITIES.slice().sort((a, b) => b.length - a.length).find((a) => text.includes(a) || text.includes(a.replace('"', '')));
+  const act = [...new Set([...ACTIVITIES, ...ACT_LIST.filter((a) => a !== 'אחר')])].sort((a, b) => b.length - a.length).find((a) => text.includes(a) || text.includes(a.replace('"', '')));
   if (act) set('activity', act); else { const am = text.match(/סדנ(?:ת|ה)\s+([^,.\n]+?)(?=\s+(?:ב|ל|עם|של)[א-ת]|[,.\n]|$)/); set('activity', am ? am[1].trim() : '', am ? 'inferred' : 'missing'); }
   // type
   const typ = /סדנ(?:ה|ת|אות)/.test(text) ? 'סדנה' : /הצגה|הצגת/.test(text) ? 'הצגה' : /זום|מקוון/.test(text) ? 'זום' : /ליווי|ייעוץ|יעוץ/.test(text) ? 'ליווי ויעוץ' : /הנחיה|הנחיית/.test(text) ? 'הנחיה' : '';
@@ -1189,7 +1196,7 @@ function settOptions(auth) {
 function fillOptions(k, R) {
   if (k === 'authority') return [...BR().authorities, ...EXTRA_AUTH];
   if (k === 'settlement') return settOptions(R.F.authority);
-  if (k === 'activity') return [...new Set([...ACTIVITIES, ...DATA.facil.activities])];
+  if (k === 'activity') return [...new Set([...ACT_LIST, ...ACTIVITIES, ...DATA.facil.activities])];
   if (k === 'location') { const br = BR(); const l = (S.sessions || []).filter((x) => x.tab === br.tab && x.location && (!R.F.settlement || x.settlement === R.F.settlement)).map((x) => x.location); return l.length ? [...new Set(l)].slice(-8).reverse() : null; }
   return OPTS[k] || null;
 }
@@ -1212,7 +1219,7 @@ function fillSheet() {
     <div class="mf-list">${list.length ? list.map((f) => `<button class="mf-row" data-act="mf-fac" data-i="${FACS.indexOf(f)}"><b>${esc(f.n)}</b><small>${f.h ? esc(f.h) : ''}</small></button>`).join('') : '<p class="muted small">אין התאמה ברשימת המנחים</p>'}</div>
     ${P.q.trim() ? `<button class="btn btn-out btn-s" data-act="mf-free" style="margin-top:8px">השתמש ב"${esc(P.q.trim())}" (לא ברשימה)</button>` : ''}`;
   } else if (opts && k === 'activity') {
-    const q = nrm(P.q), list = opts.filter((o) => !q || nrm(o).includes(q)).slice(0, 14);
+    const q = nrm(P.q), list = opts.filter((o) => !q || nrm(o).includes(q)).slice(0, q ? 40 : 24);
     ctl = `<input class="inp" type="search" data-in="mf-q" value="${esc(P.q)}" placeholder="חיפוש פעילות" autocomplete="off" aria-label="חיפוש פעילות">
     <div class="chips mf-chips">${list.map((o) => `<button class="chip ${o === cur ? 'on' : ''}" data-act="mf-pick" data-v="${esc(o)}">${esc(o)}</button>`).join('')}</div>
     ${P.q.trim() && !opts.some((o) => nrm(o) === q) ? `<button class="btn btn-out btn-s" data-act="mf-free" style="margin-top:8px">השתמש ב"${esc(P.q.trim())}"</button>` : ''}`;
