@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.5.1';
+const APP_VERSION = '1.6.0';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -1163,8 +1163,109 @@ V.intake = () => {
   ${body}
   ${tabPanel()}
 </main>
-${I.res && !I.written ? `<div class="bottom"><button class="btn btn-pri btn-xl" data-act="in-write" ${I.res.sessions.length && !I.busy ? '' : 'disabled'}>${icon('table', 'ic-s')} ${I.busy ? 'שולח לשרת…' : 'כתוב ' + I.res.sessions.length + ' שורות לטבלת המעקב'}</button>${G.server && G.server.dryRun && live() ? '<p class="hint" style="margin:8px 0 0">השרת במצב בדיקה – יוצג מה היה נכתב, בלי לכתוב לטבלה.</p>' : ''}</div>` : ''}`;
+${I.res && !I.written ? `<div class="bottom">${missingReq(I.res).length ? `<button class="btn btn-pri btn-xl" data-act="in-fill">${icon('alert', 'ic-s')} השלם ${missingReq(I.res).length} פרטים חסרים</button>` : `<button class="btn btn-pri btn-xl" data-act="in-write" ${I.res.sessions.length && !I.busy ? '' : 'disabled'}>${icon('table', 'ic-s')} ${I.busy ? 'שולח לשרת…' : 'כתוב ' + I.res.sessions.length + ' שורות לטבלת המעקב'}</button>`}${G.server && G.server.dryRun && live() ? '<p class="hint" style="margin:8px 0 0">השרת במצב בדיקה – יוצג מה היה נכתב, בלי לכתוב לטבלה.</p>' : ''}</div>` : ''}`;
 };
+// ---------- intake: guided completion of missing fields ("השלמת פרטים חסרים") ----------
+/** Fields that must be filled before writing to the tracking sheet. Not required: facResidence, notes, order numbers, amount, travel. */
+const REQ = ['funder', 'authority', 'settlement', 'location', 'domain', 'activity', 'type', 'audience', 'participants', 'facilitator', 'expected', 'startDate', 'hours', 'g15'];
+const REQ_LABEL = { g15: 'סה"כ קבוצות לתמחור', startDate: 'תאריך המפגש הראשון', expected: 'כמות מפגשים צפויים', location: 'מיקום הפעילות + שם המוסד' };
+const fillLabel = (k) => REQ_LABEL[k] || (IF.find((x) => x[0] === k) || [k, k])[1];
+function reqValid(R, k) {
+  if (k === 'g15') return R.sessions.length > 0 && R.sessions.every((_, i) => String((R.g15 || [])[i] || '').trim());
+  const v = String(R.F[k] || '').trim(); if (!v) return false;
+  if (k === 'startDate') return !!parseDMY(v);
+  if (k === 'hours') return /^\d{2}:\d{2}-\d{2}:\d{2}$/.test(v);
+  if (k === 'participants' || k === 'expected') return /^\d+$/.test(v) && +v > 0;
+  return true;
+}
+const missingReq = (R) => (R ? REQ.filter((k) => !reqValid(R, k)) : []);
+/** cells the branch head is asked about: everything empty, plus values the parser only guessed (defaults / inferred / fuzzy match) */
+const askReq = (R) => (R ? REQ.filter((k) => !reqValid(R, k) || (k !== 'g15' && ['inferred', 'matched'].includes(R.flag[k]))) : []);
+function settOptions(auth) {
+  if (!auth) return [];
+  const l = [...new Set([...(DATA.facil.settlements[auth] || []), ...(((CL.intake || {}).regional || {})[auth] || [])])];
+  return l.length ? l : [auth];
+}
+function fillOptions(k, R) {
+  if (k === 'authority') return [...BR().authorities, ...EXTRA_AUTH];
+  if (k === 'settlement') return settOptions(R.F.authority);
+  if (k === 'activity') return [...new Set([...ACTIVITIES, ...DATA.facil.activities])];
+  if (k === 'location') { const br = BR(); const l = (S.sessions || []).filter((x) => x.tab === br.tab && x.location && (!R.F.settlement || x.settlement === R.F.settlement)).map((x) => x.location); return l.length ? [...new Set(l)].slice(-8).reverse() : null; }
+  return OPTS[k] || null;
+}
+function openFill(auto) {
+  const R = UI.intake && UI.intake.res; if (!R) return;
+  const keys = auto ? askReq(R) : (missingReq(R).length ? missingReq(R) : askReq(R));
+  if (!keys.length) { if (!auto) toast('כל הפרטים מלאים'); return; }
+  UI.fill = { keys, i: 0, q: '', v: '', v2: '' };
+  fillSheet();
+}
+function fillSheet() {
+  const P = UI.fill, R = UI.intake.res, k = P.keys[P.i], n = P.keys.length;
+  const cur = k === 'g15' ? ((R.g15 || []).find((x) => x) || '') : (R.F[k] || '');
+  let ctl = '';
+  const opts = fillOptions(k, R);
+  if (k === 'facilitator') {
+    if (P.q == null || (P.qFor !== k && !P.q)) { P.q = cur; } P.qFor = k;
+    const list = facSuggestions(P.q).slice(0, 8);
+    ctl = `<input class="inp" type="search" data-in="mf-q" value="${esc(P.q)}" placeholder="הקלד שם מנחה" autocomplete="off" aria-label="חיפוש מנחה">
+    <div class="mf-list">${list.length ? list.map((f) => `<button class="mf-row" data-act="mf-fac" data-i="${FACS.indexOf(f)}"><b>${esc(f.n)}</b><small>${f.h ? esc(f.h) : ''}</small></button>`).join('') : '<p class="muted small">אין התאמה ברשימת המנחים</p>'}</div>
+    ${P.q.trim() ? `<button class="btn btn-out btn-s" data-act="mf-free" style="margin-top:8px">השתמש ב"${esc(P.q.trim())}" (לא ברשימה)</button>` : ''}`;
+  } else if (opts && k === 'activity') {
+    const q = nrm(P.q), list = opts.filter((o) => !q || nrm(o).includes(q)).slice(0, 14);
+    ctl = `<input class="inp" type="search" data-in="mf-q" value="${esc(P.q)}" placeholder="חיפוש פעילות" autocomplete="off" aria-label="חיפוש פעילות">
+    <div class="chips mf-chips">${list.map((o) => `<button class="chip ${o === cur ? 'on' : ''}" data-act="mf-pick" data-v="${esc(o)}">${esc(o)}</button>`).join('')}</div>
+    ${P.q.trim() && !opts.some((o) => nrm(o) === q) ? `<button class="btn btn-out btn-s" data-act="mf-free" style="margin-top:8px">השתמש ב"${esc(P.q.trim())}"</button>` : ''}`;
+  } else if (opts) {
+    if (k === 'settlement' && !R.F.authority) ctl = '<p class="muted">בחר קודם רשות – הישובים מוצגים לפי הרשות.</p>';
+    ctl += `<div class="chips mf-chips">${opts.map((o) => `<button class="chip ${o === cur ? 'on' : ''}" data-act="mf-pick" data-v="${esc(o)}">${esc(o)}</button>`).join('')}</div>`;
+    if (k === 'settlement' || k === 'location') ctl += `<input class="inp" style="margin-top:10px" data-in="mf-in" value="${esc(P.v)}" placeholder="${k === 'location' ? 'מוסד אחר – הקלד כאן' : 'ישוב אחר – הקלד כאן'}" aria-label="אחר">`;
+  } else if (k === 'startDate') {
+    const d = parseDMY(cur); const iso = d ? `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` : '';
+    ctl = `<input class="inp" type="date" data-in="mf-in" value="${esc(P.v || iso)}" aria-label="תאריך" dir="ltr">`;
+  } else if (k === 'hours') {
+    const [a, b] = String(cur).split('-');
+    ctl = `<div class="mf-hours"><label>התחלה<input class="inp" type="time" data-in="mf-in" value="${esc(P.v || (/^\d{2}:\d{2}$/.test(a || '') ? a : ''))}" dir="ltr"></label><label>סיום<input class="inp" type="time" data-in="mf-in2" value="${esc(P.v2 || (/^\d{2}:\d{2}$/.test(b || '') ? b : ''))}" dir="ltr"></label></div>`;
+  } else if (k === 'participants' || k === 'expected' || k === 'g15') {
+    const quick = k === 'expected' ? [1, 4, 6, 8, 10, 12] : k === 'g15' ? [1, 0.5, 2] : [10, 12, 15, 20, 25, 30];
+    ctl = `<input class="inp" inputmode="${k === 'g15' ? 'decimal' : 'numeric'}" data-in="mf-in" value="${esc(P.v || cur)}" aria-label="${esc(fillLabel(k))}" dir="ltr">
+    <div class="chips mf-chips" style="margin-top:8px">${quick.map((q) => `<button class="chip s" data-act="mf-pick" data-v="${q}">${q}</button>`).join('')}</div>
+    ${k === 'g15' ? `<p class="muted small" style="margin-top:6px">הערך יוחל על כל ${R.sessions.length} המפגשים.</p>` : ''}`;
+  } else {
+    ctl = `<input class="inp" data-in="mf-in" value="${esc(P.v || cur)}" placeholder="${k === 'location' ? 'לדוגמה: גן רימון, כפר ורדים' : ''}" aria-label="${esc(fillLabel(k))}">`;
+  }
+  const typed = !opts || k === 'settlement' || ['startDate', 'hours', 'participants', 'expected', 'g15', 'location'].includes(k);
+  const keep = cur && k !== 'g15' && reqValid(R, k) ? `<button class="btn btn-sec" data-act="mf-keep">השאר "${esc(cur)}"</button>` : '';
+  sheet(`<div class="mf-top"><span class="tag warn">${P.i + 1} מתוך ${n}</span>${cur && k !== 'g15' ? '<span class="tag">לאשר או לשנות</span>' : '<span class="tag">חסר בהודעה</span>'}<div class="mf-bar"><i style="width:${Math.round((P.i / n) * 100)}%"></i></div></div>
+  <h3>${esc(fillLabel(k))}</h3>
+  ${ctl}
+  <div class="btn-row" style="margin-top:14px">${keep}${typed ? `<button class="btn btn-pri" data-act="mf-next">${P.i + 1 < n ? 'הבא' : 'סיום'}</button>` : ''}<button class="btn btn-out" data-act="mf-skip">דלג</button><button class="btn btn-out" data-act="mf-close">השלם אחר כך</button></div>`);
+}
+/** stores a value for the current step; returns false (with a toast) if it is not valid */
+function fillSet(k, raw) {
+  const R = UI.intake.res; let v = String(raw == null ? '' : raw).trim();
+  if (!v) { toast('בחר או הקלד ערך, או "דלג"'); return false; }
+  if (k === 'startDate') { const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/); if (m) v = `${m[3]}/${m[2]}/${m[1]}`; if (!parseDMY(v)) { toast('תאריך לא תקין'); return false; } }
+  if ((k === 'participants' || k === 'expected') && !/^\d+$/.test(v)) { toast('הקלד מספר'); return false; }
+  if (k === 'g15') { if (!/^\d+(\.\d+)?$/.test(v)) { toast('הקלד מספר'); return false; } R.g15 = R.sessions.map(() => v); R.g15AllV = v; return true; }
+  R.F[k] = v; R.flag[k] = 'ok';
+  if (k === 'authority' && R.F.settlement && !settOptions(v).includes(R.F.settlement) && !(DATA.facil.settlements[v] || []).length) { R.F.settlement = ''; R.flag.settlement = 'missing'; }
+  if (k === 'settlement' && !R.F.authority) { const hit = SETT_LIST.find((x) => x.s === v); if (hit && BR().authorities.includes(hit.a)) { R.F.authority = hit.a; R.flag.authority = 'ok'; } }
+  if (k === 'startDate') { const d = parseDMY(v); R.F.weekday = DAYS[d.getDay()]; R.flag.weekday = 'ok'; }
+  if (k === 'startDate' || k === 'expected') { const g = R.g15AllV; regenSessions(R); if (g) R.g15 = R.sessions.map(() => g); }
+  return true;
+}
+function fillAdvance() {
+  const P = UI.fill, R = UI.intake.res;
+  P.q = ''; P.v = ''; P.v2 = ''; P.qFor = null;
+  // later steps may already be solved (e.g. authority inferred from settlement); steps may also appear (sessions regenerated → g15)
+  const rest = missingReq(R).filter((k) => !P.keys.includes(k));
+  const later = P.keys.slice(P.i + 1).filter((k) => !reqValid(R, k) || ['inferred', 'matched'].includes(R.flag[k]));
+  P.keys = [...P.keys.slice(0, P.i + 1), ...later, ...rest];
+  P.i++;
+  if (P.i >= P.keys.length) { closeSheet(); UI.fill = null; rerender(); const left = missingReq(R).length; toast(left ? `נשארו ${left} פרטים חסרים` : 'כל הפרטים הושלמו – אפשר לכתוב לטבלה'); return; }
+  fillSheet();
+}
 // ---------- my tab in the tracking sheet (sessions.recent) ----------
 const TAB = { key: null, data: null, loading: false, err: null, at: 0 };
 async function loadTab(force) {
@@ -1905,7 +2006,7 @@ A['sum-share'] = async (el) => { const r = await shareWithFile(getEv(el.dataset.
 // intake
 A['in-sample'] = () => { UI.intake = { text: SAMPLE_INTAKE, res: null, written: false }; rerender(); };
 A['in-paste'] = async () => { try { const t = await navigator.clipboard.readText(); if (t) { UI.intake.text = t; UI.intake.res = null; UI.intake.written = false; rerender(); return; } } catch (e) { /* fallthrough */ } toast('לא ניתן לקרוא מהלוח – הדבק ידנית בתיבה'); };
-A['in-parse'] = () => { const I = UI.intake; if (!I.text.trim()) { toast('הדבק קודם הודעה'); return; } I.res = parseIntake(I.text, ME()); I.written = false; I.result = null; I.requestId = null; I.serverErr = null; rerender(); setTimeout(() => { const h = document.querySelectorAll('.h2')[1]; if (h) h.scrollIntoView({ block: 'start' }); }, 0); };
+A['in-parse'] = () => { const I = UI.intake; if (!I.text.trim()) { toast('הדבק קודם הודעה'); return; } I.res = parseIntake(I.text, ME()); I.written = false; I.result = null; I.requestId = null; I.serverErr = null; rerender(); setTimeout(() => { const h = document.querySelectorAll('.h2')[1]; if (h) h.scrollIntoView({ block: 'start' }); }, 0); setTimeout(() => openFill(true), 350); };
 A['in-regen'] = () => { regenSessions(UI.intake.res); rerender(); };
 /** One server row object per session (keys = sessions.add contract, SHEETS.md §1). */
 function sessionRows(R) {
@@ -1926,6 +2027,7 @@ function sessionsFlushed(requestId, data) {
 const scrollWritten = () => setTimeout(() => { const w = $('#written'); if (w) w.scrollIntoView({ block: 'start' }); }, 0);
 A['in-write'] = async () => {
   const I = UI.intake, R = I.res, n = R.sessions.length;
+  if (missingReq(R).length) { openFill(false); return; }
   if (G.demo) { addLocalSessions(R, { demo: true }); save(); I.written = true; I.result = { demo: true }; rerender(); toast(n + ' שורות מוכנות · נוספו להשבוע שלי'); scrollWritten(); return; }
   if (I.busy) return;
   I.busy = true; I.serverErr = null; rerender();
@@ -1942,10 +2044,18 @@ A['in-write'] = async () => {
   } finally { I.busy = false; rerender(); scrollWritten(); }
 };
 A['in-new'] = () => { UI.intake = null; rerender(); };
+A['mf-pick'] = (el) => { const P = UI.fill, k = P.keys[P.i]; if (['participants', 'expected', 'g15'].includes(k)) { P.v = el.dataset.v; } if (fillSet(k, el.dataset.v)) fillAdvance(); };
+A['mf-fac'] = (el) => { const P = UI.fill, R = UI.intake.res, f = FACS[+el.dataset.i]; R.F.facilitator = f.n; R.flag.facilitator = 'ok'; delete R.F._facOrig; R.F._facNew = false; if (f.h) { R.F.facResidence = f.h; R.flag.facResidence = 'list'; } fillAdvance(); };
+A['mf-free'] = () => { const P = UI.fill, R = UI.intake.res, k = P.keys[P.i]; if (!fillSet(k, P.q)) return; if (k === 'facilitator') R.F._facNew = true; fillAdvance(); };
+A['mf-next'] = () => { const P = UI.fill, k = P.keys[P.i]; const R0 = UI.intake.res; const i1 = $('#sheet-root [data-in="mf-in"]'), i2 = $('#sheet-root [data-in="mf-in2"]'); if (i1) P.v = i1.value; if (i2) P.v2 = i2.value; if (k === 'settlement' || k === 'location') { if (!P.v.trim() && !reqValid(R0, k)) { toast('בחר מהרשימה או הקלד'); return; } } if (k !== 'hours' && k !== 'g15' && !String(P.v || '').trim() && reqValid(R0, k)) { R0.flag[k] = 'ok'; fillAdvance(); return; } const v = k === 'hours' ? (P.v && P.v2 ? `${P.v}-${P.v2}` : '') : P.v; if (k === 'hours' && !(P.v && P.v2)) { toast('בחר שעת התחלה ושעת סיום'); return; } if (k === 'hours' && P.v2 <= P.v) { toast('שעת הסיום לפני שעת ההתחלה'); return; } if (fillSet(k, v)) fillAdvance(); };
+A['mf-skip'] = () => fillAdvance();
+A['mf-keep'] = () => { const P = UI.fill, R = UI.intake.res, k = P.keys[P.i]; R.flag[k] = 'ok'; fillAdvance(); };
+A['mf-close'] = () => { closeSheet(); UI.fill = null; rerender(); };
+A['in-fill'] = () => openFill(false);
 A['in-ai'] = async () => {
   const I = UI.intake; if (!I.text.trim()) { toast('הדבק קודם הודעה'); return; }
   I.aiBusy = true; rerender();
-  try { const r = await api.call('ai.parseGroupMessage', { text: I.text }, { queueable: false }); const res = intakeFromClaude(r); if (!res) throw new Error('תשובה לא צפויה מהשרת'); I.res = res; I.written = false; I.result = null; I.requestId = null; toast('ה-AI בשרת מילא את טבלת האישור'); }
+  try { const r = await api.call('ai.parseGroupMessage', { text: I.text }, { queueable: false }); const res = intakeFromClaude(r); if (!res) throw new Error('תשובה לא צפויה מהשרת'); I.res = res; I.written = false; I.result = null; I.requestId = null; toast('ה-AI בשרת מילא את טבלת האישור'); setTimeout(() => openFill(true), 350); }
   catch (e) { toast('ניתוח AI נכשל: ' + (e.message || '') + ' – אפשר "חלץ שדות" או "נתח עם Claude"', 4000); }
   finally { I.aiBusy = false; rerender(); }
 };
@@ -2055,7 +2165,7 @@ A['cl-load'] = (el) => {
   if (!ex) return bad();
   if (kind === 'in') {
     const res = intakeFromClaude(ex.obj); if (!res) return bad();
-    h.res = res; h.written = false; h.result = null; h.requestId = null; h.claude = null; rerender(); toast('התוצאה של Claude נטענה לטבלת האישור');
+    h.res = res; h.written = false; h.result = null; h.requestId = null; h.claude = null; rerender(); toast('התוצאה של Claude נטענה לטבלת האישור'); setTimeout(() => openFill(true), 350);
     setTimeout(() => { const t = document.querySelectorAll('.h2')[1]; if (t) t.scrollIntoView({ block: 'start' }); }, 0);
   } else {
     const res = assessFromClaude(ex.obj, ex.rest); if (!res) return bad();
@@ -2146,6 +2256,9 @@ const IN = {
   'rep-text': (el) => { const { parts } = parseHash(); UI.report[parts[1]].text = el.value; },
   'sum-text': (el) => { const ev = getEv(el.dataset.ev); ev.summary = el.value; save(); },
   'in-text': (el) => { UI.intake.text = el.value; },
+  'mf-in': (el) => { if (UI.fill) UI.fill.v = el.value; },
+  'mf-in2': (el) => { if (UI.fill) UI.fill.v2 = el.value; },
+  'mf-q': (el) => { if (!UI.fill) return; UI.fill.q = el.value; clearTimeout(IN._mt); IN._mt = setTimeout(() => { const p = el.selectionStart; fillSheet(); const n = document.querySelector('[data-in="mf-q"]'); if (n) { n.focus(); try { n.setSelectionRange(p, p); } catch (_) {} } }, 200); },
   'q6': (el) => { const ev = getEv(el.dataset.ev); ev.q6 = ev.q6 || {}; ev.q6[el.dataset.q] = el.value; save(); const card = el.closest('.q6'); if (card) { const n = q6Answered(ev); card.querySelector('.q6-h .tag').textContent = n + '/6'; card.classList.toggle('ok', n === 6); } },
   'cl-paste': (el) => { const h = el.dataset.k === 'in' ? UI.intake : UI.assess; if (h.claude) { h.claude.paste = el.value; } },
   'g15': (el) => { const R = UI.intake.res; R.g15 = R.g15 || []; R.g15[+el.dataset.i] = el.value.trim(); },
