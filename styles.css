@@ -516,3 +516,4 @@ button.ab-act{background:none;border:0;cursor:pointer;font:inherit}
 .mf-row small{color:var(--muted);font-size:13px}
 .mf-hours{display:flex;gap:10px}
 .mf-hours label{flex:1;display:flex;flex-direction:column;gap:4px;font-size:14px;color:var(--muted)}
+.mf-cancel{display:block;width:100%;text-align:center;color:#b42318;margin-top:12px;font-size:14px}

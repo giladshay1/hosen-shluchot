@@ -5,7 +5,7 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.6.1';
+const APP_VERSION = '1.6.2';
 
 (async function () {
 // content files (cached by the service worker for offline use)
@@ -1170,7 +1170,7 @@ V.intake = () => {
   ${body}
   ${tabPanel()}
 </main>
-${I.res && !I.written ? `<div class="bottom">${missingReq(I.res).length ? `<button class="btn btn-pri btn-xl" data-act="in-fill">${icon('alert', 'ic-s')} השלם ${missingReq(I.res).length} פרטים חסרים</button>` : `<button class="btn btn-pri btn-xl" data-act="in-write" ${I.res.sessions.length && !I.busy ? '' : 'disabled'}>${icon('table', 'ic-s')} ${I.busy ? 'שולח לשרת…' : 'כתוב ' + I.res.sessions.length + ' שורות לטבלת המעקב'}</button>`}${G.server && G.server.dryRun && live() ? '<p class="hint" style="margin:8px 0 0">השרת במצב בדיקה – יוצג מה היה נכתב, בלי לכתוב לטבלה.</p>' : ''}</div>` : ''}`;
+${I.res && !I.written ? `<div class="bottom"><button class="lnk mf-cancel" data-act="in-cancel" style="margin:0 0 6px">ביטול – לא לכתוב לטבלה</button>${missingReq(I.res).length ? `<button class="btn btn-pri btn-xl" data-act="in-fill">${icon('alert', 'ic-s')} השלם ${missingReq(I.res).length} פרטים חסרים</button>` : `<button class="btn btn-pri btn-xl" data-act="in-write" ${I.res.sessions.length && !I.busy ? '' : 'disabled'}>${icon('table', 'ic-s')} ${I.busy ? 'שולח לשרת…' : 'כתוב ' + I.res.sessions.length + ' שורות לטבלת המעקב'}</button>`}${G.server && G.server.dryRun && live() ? '<p class="hint" style="margin:8px 0 0">השרת במצב בדיקה – יוצג מה היה נכתב, בלי לכתוב לטבלה.</p>' : ''}</div>` : ''}`;
 };
 // ---------- intake: guided completion of missing fields ("השלמת פרטים חסרים") ----------
 /** Fields that must be filled before writing to the tracking sheet. Not required: facResidence, notes, order numbers, amount, travel. */
@@ -1246,7 +1246,8 @@ function fillSheet() {
   sheet(`<div class="mf-top"><span class="tag warn">${P.i + 1} מתוך ${n}</span>${cur && k !== 'g15' ? '<span class="tag">לאשר או לשנות</span>' : '<span class="tag">חסר בהודעה</span>'}<div class="mf-bar"><i style="width:${Math.round((P.i / n) * 100)}%"></i></div></div>
   <h3>${esc(fillLabel(k))}</h3>
   ${ctl}
-  <div class="btn-row" style="margin-top:14px">${keep}${typed ? `<button class="btn btn-pri" data-act="mf-next">${P.i + 1 < n ? 'הבא' : 'סיום'}</button>` : ''}<button class="btn btn-out" data-act="mf-skip">דלג</button><button class="btn btn-out" data-act="mf-close">השלם אחר כך</button></div>`);
+  <div class="btn-row" style="margin-top:14px">${keep}${typed ? `<button class="btn btn-pri" data-act="mf-next">${P.i + 1 < n ? 'הבא' : 'סיום'}</button>` : ''}<button class="btn btn-out" data-act="mf-skip">דלג</button><button class="btn btn-out" data-act="mf-close">השלם אחר כך</button></div>
+  <button class="lnk mf-cancel" data-act="in-cancel">בטל את הקליטה – ההודעה לא תיכתב לטבלה</button>`);
 }
 /** stores a value for the current step; returns false (with a toast) if it is not valid */
 function fillSet(k, raw) {
@@ -1431,7 +1432,7 @@ V.week = () => {
   return `${appBar('השבוע שלי', 'מתוך טבלת המעקב · לשונית ' + (c ? c.tab : BR().tab), '#/home')}
 <main class="pad">
   <div class="weeknav"><button class="icon-btn" data-act="wk" data-v="-1" aria-label="שבוע קודם">${icon('chevR')}</button><div style="text-align:center"><b>${ddmm(sun)} – ${ddmm(sat)}</b><div class="muted">${off === 0 ? 'השבוע' : off === 1 ? 'שבוע הבא' : off === -1 ? 'שבוע שעבר' : ''}</div></div><button class="icon-btn" data-act="wk" data-v="1" aria-label="שבוע הבא">${icon('chevL')}</button></div>
-  <div class="tags" style="justify-content:center;margin-bottom:6px"><span class="tag">${cnt('תואם')} תואם</span><span class="tag ok">${cnt('בוצע')} בוצע</span><span class="tag bad">${cnt('בוטלה')} בוטלה</span></div>
+  <div class="tags" style="justify-content:center;margin-bottom:6px"><span class="tag">${cnt('תואם')} תואם</span><span class="tag ok">${cnt('בוצעה')} בוצעו</span><span class="tag bad">${cnt('בוטלה')} בוטלה</span></div>
   <div class="sec"><span>${WEEK.loading === k ? 'טוען מהטבלה…' : c ? rows.length + ' מפגשים בלשונית' : ''}</span><button class="lnk" data-act="wk-refresh">רענן</button></div>
   ${WEEK.err ? `<div class="banner-demo">${icon('info', 'ic-s')}<span>לא הצלחתי לטעון מהטבלה (${esc(WEEK.err)}).</span></div>` : ''}
   ${c && !rows.length ? '<div class="empty">אין מפגשים בשבוע הזה בלשונית.</div>' : ''}
@@ -1442,12 +1443,12 @@ V.week = () => {
 <div class="bottom"><a class="btn btn-sec btn-xl" href="#/intake">${icon('plus', 'ic-s')} קליטת קבוצה מהודעה</a></div>`;
 };
 function weekCard(r) {
-  const cls = r.status === 'בוצע' ? 's-done' : r.status === 'בוטלה' ? 's-cancel' : '';
+  const cls = r.status === 'בוצעה' ? 's-done' : r.status === 'בוטלה' ? 's-cancel' : '';
   const b = (v, label, ic) => `<button class="btn btn-out ${r.status === v ? (v === 'בוטלה' ? 'sel-cancel' : 'sel-done') : ''}" data-act="wst" data-row="${r.row}" data-v="${v}" ${r.status === v ? 'disabled' : ''}>${icon(ic, 'ic-s')} ${label}</button>`;
   return `<div class="ss ${cls}"><div class="ss-top"><b>${esc(r.activityName || r.activityType)}${r.audience ? ' · ' + esc(r.audience) : ''}</b><span class="ss-h" dir="ltr">${esc(r.hours)}</span></div>
   <div class="meta">${esc([r.authority, r.locality && r.locality !== r.authority ? r.locality : '', r.location].filter(Boolean).join(' · '))}${r.sessionNumber ? ' · מפגש ' + esc(r.sessionNumber) + (r.expectedSessions ? '/' + esc(r.expectedSessions) : '') : ''}</div>
   <div class="meta">מנחה: ${esc(r.facilitator || '—')} · סטטוס בטבלה: <b>${esc(r.status || '—')}</b> · שורה ${r.row}</div>
-  <div class="btn-row">${b('בוצע', 'בוצע', 'check')}${b('בוטלה', 'בוטלה', 'x')}${r.status && r.status !== 'תואם' ? b('תואם', 'החזר לתואם', 'cal') : ''}</div></div>`;
+  <div class="btn-row">${b('בוצעה', 'בוצע', 'check')}${b('בוטלה', 'בוטלה', 'x')}${r.status && r.status !== 'תואם' ? b('תואם', 'החזר לתואם', 'cal') : ''}</div></div>`;
 }
 function weekRowByNum(row) { const c = WEEK.cache[weekKey(UI.weekOff || 0)]; return c ? c.rows.find((r) => String(r.row) === String(row)) : null; }
 function sessionCard(s) {
@@ -2059,6 +2060,7 @@ A['mf-skip'] = () => fillAdvance();
 A['mf-keep'] = () => { const P = UI.fill, R = UI.intake.res, k = P.keys[P.i]; R.flag[k] = 'ok'; fillAdvance(); };
 A['mf-close'] = () => { closeSheet(); UI.fill = null; rerender(); };
 A['in-fill'] = () => openFill(false);
+A['in-cancel'] = () => { closeSheet(); UI.fill = null; UI.intake = null; rerender(); window.scrollTo(0, 0); toast('הקליטה בוטלה – לא נכתב דבר לטבלה'); };
 A['in-ai'] = async () => {
   const I = UI.intake; if (!I.text.trim()) { toast('הדבק קודם הודעה'); return; }
   I.aiBusy = true; rerender();
