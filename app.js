@@ -5,11 +5,11 @@ import { Api, registerSW } from './api.js';
 
 // ───────────── CONFIG: the ONLY place to change the backend URL ─────────────
 const API_URL = 'https://script.google.com/macros/s/AKfycbxGFyaTL7G5ujUoLk08qmDzLj6GBT-Z5p276HHv875WXkXcd8u-slvTFeQca987CgljqQ/exec';
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 
 (async function () {
 // content files (cached by the service worker for offline use)
-const DATA_FILES = { events: 'events', templates: 'templates', flyers: 'flyers', roles: 'roles', services: 'services', facil: 'facil', arDrafts: 'ar_drafts', claude: 'claude' };
+const DATA_FILES = { docs: 'docs', events: 'events', templates: 'templates', flyers: 'flyers', roles: 'roles', services: 'services', facil: 'facil', arDrafts: 'ar_drafts', claude: 'claude' };
 let DATA;
 try {
   const keys = Object.keys(DATA_FILES);
@@ -860,7 +860,7 @@ V.msg = (id, itemId, mi) => {
   <textarea class="ta" data-in="msg-text" rows="9" ${MT.lang === 'ar' ? 'lang="ar"' : ''}>${esc(curText)}</textarea>
   <p class="muted" style="margin-top:6px">{שם_נמען} יוחלף אוטומטית בשם של כל נמען.</p>
   ${miss.length ? `<div class="tags" style="margin-top:6px">${miss.map((p) => p === '{טלפון_ראש_שלוחה}' ? `<button class="tag warn" data-act="settings">להשלים: ${esc(p)} · הגדר בפרופיל</button>` : `<span class="tag warn">להשלים: ${esc(p)}</span>`).join('')}</div>` : ''}
-  ${fl ? `<h2 class="h2">פלייר מצורף</h2><div class="fl">${flyerThumb(fl)}<div class="fl-t"><b>${esc(fl.title)}</b>${flyerTags(fl)}${fl.notes ? `<span class="muted">${esc(fl.notes)}</span>` : ''}<span class="muted small">קהל: ${esc(fl.audience)}</span>${fls.length > 1 ? `<button class="lnk" data-act="msg-flyer">החלף פלייר (${(M.flyerIdx % fls.length) + 1}/${fls.length})</button>` : ''}</div></div><p class="muted small" style="margin-top:6px">${fl.file ? 'הקובץ המקורי יצורף בשיתוף.' : 'הקובץ לא כלול באפליקציה (קטלוג בלבד) – ישותף הנוסח בלבד. את הקובץ מקבלים מצוות המרכז.'}</p>` : ''}
+  ${fl ? `<h2 class="h2">פלייר מצורף</h2><div class="fl">${flyerThumb(fl)}<div class="fl-t"><b>${esc(fl.title)}</b>${flyerTags(fl)}${fl.notes ? `<span class="muted">${esc(fl.notes)}</span>` : ''}<span class="muted small">קהל: ${esc(fl.audience)}</span>${fls.length > 1 ? `<button class="lnk" data-act="msg-flyer">החלף פלייר (${(M.flyerIdx % fls.length) + 1}/${fls.length})</button>` : ''}</div></div><p class="muted small" style="margin-top:6px">${fl.file ? 'הקובץ המקורי יצורף בשיתוף.' : 'הקובץ עוד לא הוכנס לאפליקציה (קטלוג בלבד) – ישותף הנוסח בלבד. קבצים מוסיפים לאפליקציה ידנית.'}</p>` : ''}
 </main>
 <div class="bottom"><p class="hint">וואטסאפ ייפתח לכל נמען בנפרד (${nSel}). הנוסח והפלייר מוכנים.</p>
 <div class="btn-row"><button class="btn btn-out" style="flex:0 0 auto" data-act="msg-copy" aria-label="העתק נוסח">${icon('copy', 'ic-s')}</button><button class="btn btn-sec" data-act="msg-share">${icon('share', 'ic-s')} ${fl && fl.file ? 'שתף עם פלייר' : 'שתף'}</button><button class="btn btn-wa" style="flex:1.4" data-act="msg-send" ${nSel ? '' : 'disabled'}>${icon('wa', 'ic-s')} שלח בוואטסאפ (${nSel})</button></div></div>`;
@@ -1042,14 +1042,14 @@ function parseVcf(text) {
 }
 
 // ---------- flyers ----------
-/** פליירים של מענים = חוברות מענים, נהלים ותכניות שאפשר להציע (קטגוריית הדרייב "מענים", חוברות svc_, או kind: maanim בנתונים). */
+/** פליירים של מענים = חוברות מענים, נהלים ותכניות שאפשר להציע (קטגוריית "מענים ונהלים", חוברות svc_, או kind: maanim בנתונים). */
 const isMaanimFlyer = (f) => f.kind === 'maanim' || /מענים/.test(f.category || '') || /^svc_/.test(f.id);
 V.flyers = () => {
   const F = UI.fl, all0 = DATA.flyers.flyers;
   const all = F.cat === 'maanim' ? all0.filter(isMaanimFlyer) : F.cat === 'hasbara' ? all0.filter((f) => !isMaanimFlyer(f)) : all0;
   const auds = [...new Set(all.map((f) => f.audience))].sort((a, b) => a.localeCompare(b, 'he'));
   const list = all.filter((f) => (!F.sit || (f.situations || []).includes(F.sit)) && (!F.lang || f.languages.includes(F.lang)) && (!F.aud || f.audience === F.aud) && (!F.q || (f.title + ' ' + f.audience + ' ' + (f.notes || '')).includes(F.q)));
-  return `${appBar('חומרי הסברה', 'של משאבים · ' + all.length + ' פריטים', '#/home')}
+  return `${appBar('חומרי הסברה', 'שמורים באפליקציה · ' + all.length + ' פריטים', '#/home')}
 <main class="pad">
   <div class="seg-cat">${[['', 'הכול', all0.length], ['hasbara', 'חומרי הסברה', all0.filter((f) => !isMaanimFlyer(f)).length], ['maanim', 'פליירים של מענים', all0.filter(isMaanimFlyer).length]].map(([k, l, n]) => `<button class="${(F.cat || '') === k ? 'on' : ''}" data-act="fl-cat" data-v="${k}">${esc(l)} <small>${n}</small></button>`).join('')}</div>
   <input class="inp" type="search" placeholder="חיפוש פלייר" data-in="fl-q" value="${esc(F.q)}" aria-label="חיפוש פלייר">
@@ -1070,7 +1070,7 @@ function openFlyer(id) {
   <div class="fl">${flyerThumb(f)}<div class="fl-t">${flyerTags(f)}<dl class="kv"><dt>קהל</dt><dd>${esc(f.audience)}</dd><dt>הפצה</dt><dd>${esc(DATA.flyers.distributionValues[f.distribution] || '')}</dd><dt>קטגוריה</dt><dd>${esc(f.category || '')}</dd>${f.dated ? `<dt>הערה</dt><dd>מתוארך – לבדוק עדכניות</dd>` : ''}</dl></div></div>
   ${f.notes ? `<p class="muted" style="margin-top:8px">${esc(f.notes)}</p>` : ''}
   ${(f.events || []).length ? `<p class="small muted" style="margin-top:6px">מתאים לאירועים: ${f.events.map((e) => esc(shortEv(e))).join(', ')}</p>` : ''}
-  ${f.file ? `<img class="fl-big" src="${esc(f.file)}" alt="${esc(f.title)}"><p class="small muted" style="margin-top:6px">הקובץ נשמר באפליקציה וזמין גם בלי רשת. בשיתוף בוחרים וואטסאפ ← איש קשר או קבוצה.</p>` : '<p class="small muted" style="margin-top:6px">הקובץ לא כלול באפליקציה (קטלוג בלבד) – ישותף הנוסח בלבד. את הקובץ מקבלים מצוות המרכז.</p>'}
+  ${f.file ? `<img class="fl-big" src="${esc(f.file)}" alt="${esc(f.title)}"><p class="small muted" style="margin-top:6px">הקובץ נשמר באפליקציה וזמין גם בלי רשת. בשיתוף בוחרים וואטסאפ ← איש קשר או קבוצה.</p>` : '<p class="small muted" style="margin-top:6px">הקובץ עוד לא הוכנס לאפליקציה (קטלוג בלבד) – ישותף הנוסח בלבד. קבצים מוסיפים לאפליקציה ידנית.</p>'}
   <div class="btn-row" style="margin-top:14px"><button class="btn btn-wa" data-act="fl-share" data-id="${f.id}" ${f.internalOnly ? 'disabled' : ''}>${icon('share', 'ic-s')} שתף</button><button class="btn btn-out" data-act="sheet-close">סגור</button></div>`);
 }
 
@@ -1334,31 +1334,17 @@ function actVoice() {
   paintPtt();
 };
 
-// ---------- נהלי עבודה (docs.list – הרשימה והקישורים מגיעים מהשרת, רק למשתמשים מחוברים) ----------
-const DOCS = { data: LS.get('hosen:docs') || null, loading: false, err: null, at: 0 };
-const DOCS_DEMO = [{ group: 'חירום – תפקיד ותפיסת עבודה', items: [{ title: 'הרכזים בחירום – שאגת הארי', type: 'pdf', desc: 'מה עושה רכז השלוחה בחירום, שלב אחר שלב' }, { title: 'התנהלות צוות מרכזי החוסן בזמן חירום', type: 'docx', desc: 'נוהל עבודת הצוות באירוע חירום' }] }, { group: 'אירוע חריג', items: [{ title: 'נוהל תפעול ודיווח אירוע חריג', type: 'docx', desc: 'מתי ואיך מדווחים על אירוע חריג' }, { title: 'דוח אירוע חריג (טופס)', type: 'docx', desc: 'הטופס למילוי ולשליחה' }] }, { group: 'נהלי מענים', items: [{ title: 'נוהל חרדה', type: 'drive', desc: 'טיפול קצר מועד ללא עלות' }] }];
-async function loadDocs() {
-  if (!live() || DOCS.loading) return; DOCS.loading = true; DOCS.err = null;
-  try { const r = await api.call('docs.list', {}, { queueable: false }); if (r && Array.isArray(r.groups)) { DOCS.data = r; DOCS.at = Date.now(); LS.set('hosen:docs', r); } }
-  catch (e) { DOCS.err = (e && e.message) || 'שגיאה'; DOCS.at = Date.now(); }
-  DOCS.loading = false; if (location.hash.startsWith('#/docs')) rerender();
-}
-const DOC_ICON = { pdf: 'PDF', docx: 'Word', pptx: 'מצגת', drive: 'תיקייה/מסמך' };
+// ---------- נהלי עבודה: רשימה שמורה באפליקציה (data/docs.json), בלי חיבור לדרייב חיצוני ----------
+const DOC_ICON = { pdf: 'PDF', docx: 'Word', pptx: 'מצגת', drive: 'מסמך' };
 V.docs = () => {
-  const demo = !live();
-  if (!demo && (!DOCS.at || Date.now() - DOCS.at > 10 * 60000)) setTimeout(loadDocs, 0);
-  const groups = demo ? DOCS_DEMO : (DOCS.data ? DOCS.data.groups : []);
+  const groups = (DATA.docs && DATA.docs.groups) || [];
   const q = (UI.docQ || '').trim();
   const filt = groups.map((g) => ({ ...g, items: g.items.filter((d) => !q || (d.title + ' ' + d.desc).includes(q)) })).filter((g) => g.items.length);
   return `${appBar('נהלי עבודה', 'נהלים, טפסים ולקחים · מרכז החוסן', '#/home')}
 <main class="pad">
-  ${demo ? `<div class="banner-demo">${icon('info', 'ic-s')}<span><b>מצב אורח:</b> מוצגת רשימה לדוגמה. אחרי כניסה רואים את כל הנהלים ופותחים אותם.</span></div>` : ''}
   <input class="inp" type="search" placeholder="חיפוש נוהל" data-in="doc-q" value="${esc(UI.docQ || '')}" aria-label="חיפוש נוהל">
-  ${DOCS.err && !demo && !DOCS.data ? `<div class="banner-demo">${icon('info', 'ic-s')}<span>לא הצלחתי לטעון את הרשימה (${esc(DOCS.err)}).</span></div>` : ''}
-  ${!demo && !DOCS.data && DOCS.loading ? '<p class="muted">טוען…</p>' : ''}
-  ${filt.map((g) => `<div class="lbl" style="margin-top:14px">${esc(g.group)}</div><ul class="doc-list">${g.items.map((d) => `<li>${d.url ? `<a class="doc-row" href="${esc(d.url)}" target="_blank" rel="noopener">` : '<div class="doc-row">'}<span class="doc-ic">${icon('file')}</span><span style="flex:1;min-width:0"><b>${esc(d.title)}</b><small class="muted">${esc(d.desc || '')}</small></span><span class="tag">${esc(DOC_ICON[d.type] || '')}</span>${d.url ? '</a>' : '</div>'}</li>`).join('')}</ul>`).join('')}
+  ${filt.map((g) => `<div class="lbl" style="margin-top:14px">${esc(g.group)}</div><ul class="doc-list">${g.items.map((d) => `<li>${d.url || d.file ? `<a class="doc-row" href="${esc(d.url || d.file)}" target="_blank" rel="noopener">` : '<div class="doc-row">'}<span class="doc-ic">${icon('file')}</span><span style="flex:1;min-width:0"><b>${esc(d.title)}</b><small class="muted">${esc(d.desc || '')}</small></span><span class="tag">${d.url || d.file ? esc(DOC_ICON[d.type] || '') : 'יתווסף'}</span>${d.url || d.file ? '</a>' : '</div>'}</li>`).join('')}</ul>`).join('')}
   ${q && !filt.length ? '<div class="empty">לא נמצא נוהל מתאים.</div>' : ''}
-  ${!demo && DOCS.data && DOCS.data.folder ? `<a class="btn btn-out" style="width:100%;margin-top:14px" href="${esc(DOCS.data.folder)}" target="_blank" rel="noopener">${icon('share', 'ic-s')} פתח את תיקיית הנהלים בדרייב</a><p class="muted small" style="margin-top:6px">המסמכים נפתחים בגוגל דרייב, לפי הרשאות התיקייה.</p>` : ''}
 </main>${tabbar('')}`;
 };
 // ───────────── sheets ─────────────

@@ -5,7 +5,7 @@
  *   never cached. api.js keeps its own IndexedDB outbox (iOS Safari has no Background Sync).
  * Bump VERSION on every deploy so phones pick up the new files ("גרסה חדשה זמינה – לחץ לעדכון").
  */
-const VERSION = 'v1.7.0';
+const VERSION = 'v1.8.0';
 const SHELL_CACHE = 'shell-' + VERSION;
 const CONTENT_CACHE = 'content-' + VERSION;
 const FLYER_CACHE = 'flyers-rt';            // runtime cache for any other flyer opened later; survives versions
@@ -16,7 +16,7 @@ const SHELL = [
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png', './icons/favicon-32.png'
 ];
 const CONTENT = [
-  './data/events.json', './data/templates.json', './data/flyers.json', './data/roles.json', './data/services.json',
+  './data/docs.json', './data/events.json', './data/templates.json', './data/flyers.json', './data/roles.json', './data/services.json',
   './data/facil.json', './data/ar_drafts.json', './data/claude.json',
   // core flyers (public distribution only; ≤ 3 MB total)
   './flyers/post_elderly_1.jpg', './flyers/post_elderly_2.jpg', './flyers/post_elderly_3.jpg', './flyers/post_elderly_4.jpg',
