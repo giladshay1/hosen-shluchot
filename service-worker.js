@@ -5,7 +5,7 @@
  *   never cached. api.js keeps its own IndexedDB outbox (iOS Safari has no Background Sync).
  * Bump VERSION on every deploy so phones pick up the new files ("גרסה חדשה זמינה – לחץ לעדכון").
  */
-const VERSION = 'v1.8.0';
+const VERSION = 'v1.8.1';
 const SHELL_CACHE = 'shell-' + VERSION;
 const CONTENT_CACHE = 'content-' + VERSION;
 const FLYER_CACHE = 'flyers-rt';            // runtime cache for any other flyer opened later; survives versions
@@ -23,7 +23,9 @@ const CONTENT = [
   './flyers/post_parenting_1.jpg', './flyers/post_parenting_2.jpg', './flyers/post_parenting_3.jpg', './flyers/post_parenting_4.jpg',
   './flyers/post_parenting_5.jpg', './flyers/post_neighbors.jpg', './flyers/post_anxiety_ritual.jpg', './flyers/post_anxiety_news.jpg',
   './flyers/post_anxiety_wave.jpg', './flyers/post_anxiety_grounding.jpg', './flyers/post_anxiety_action.jpg',
-  './flyers/kids_talk_he.jpg', './flyers/kids_talk_ar_jpeg.jpg'
+  './flyers/kids_talk_he.jpg', './flyers/kids_talk_ar_jpeg.jpg',
+  // work procedures (נהלי עבודה) – stored in the app, available offline
+  './docs/branch-coordinator-emergency.pdf', './docs/anxiety-protocol.pdf', './docs/hosen-team-emergency.docx', './docs/unusual-event-procedure.docx', './docs/unusual-event-report.docx'
 ];
 
 // cache:'reload' bypasses the HTTP cache (GitHub Pages sends max-age=600), so a new VERSION really gets new files.
