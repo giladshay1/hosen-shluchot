@@ -7,7 +7,7 @@
  * Offline: write actions marked queueable go to an IndexedDB "outbox" with a client requestId and are
  * flushed on app start, on 'online', on visibilitychange, and after every successful call.
  * (iOS has no Background Sync, so flushing happens only while the app is open.)
- * The server is idempotent for replays: sessions.add dedupes by requestId, events.create by event_id,
+ * The server is idempotent for replays: events.create dedupes by event_id,
  * setStep/contacts.upsert are upserts.
  *
  * Usage (ES module):
@@ -20,8 +20,8 @@
 const DB_NAME = 'hosen-app';
 const DB_VERSION = 1;
 let SEQ = 0;   // tie-breaker for writes queued in the same millisecond
-const QUEUEABLE = new Set(['events.create', 'events.setStep', 'events.close', 'events.delete', 'contacts.upsert', 'contacts.delete', 'log', 'sessions.add', 'voice.send']);
-const CACHEABLE = new Set(['config', 'docs.list', 'sessions.recent', 'contacts.list', 'events.list', 'events.get', 'flyers.list']);
+const QUEUEABLE = new Set(['events.create', 'events.setStep', 'events.close', 'events.delete', 'contacts.upsert', 'contacts.delete', 'log', 'voice.send']);
+const CACHEABLE = new Set(['config', 'docs.list', 'contacts.list', 'events.list', 'events.get', 'flyers.list']);
 
 function uuid() {
   return (crypto.randomUUID ? crypto.randomUUID()
@@ -220,10 +220,6 @@ export class Api {
   }
 
   // ── typed helpers ──
-  addGroupSessions(rows, requestId) { return this.call('sessions.add', { rows }, { requestId, queueable: true }); }
-  previewGroupSessions(rows) { return this.call('sessions.preview', { rows }, { queueable: false }); }
-  parseGroupMessage(text) { return this.call('ai.parseGroupMessage', { text }, { queueable: false }); }   // → {group, sessions, missing, warnings, rows}
-  getFacilitators() { return this.call('getFacilitators', {}, { queueable: false }); }                   // → [{name, home, sessions}]
   analyzeAssessment(summary, eventId) { return this.call('ai.analyzeAssessment', { summary, event_id: eventId }, { queueable: false }); }
   setStep(eventId, day, stage, stepId, done, note) {
     return this.call('events.setStep', { event_id: eventId, day, stage, step_id: stepId, done, note, at: new Date().toISOString() });
